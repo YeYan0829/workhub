@@ -1,0 +1,9 @@
+{
+  "name": "workhub-browser-checks",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Browser checks invoked by the Java integration tests; no frontend build step.",
+  "engines": { "node": ">=20" },
+  "scripts": { "browser:install": "playwright install chromium" },
+  "devDependencies": { "playwright": "1.55.1" }
+}

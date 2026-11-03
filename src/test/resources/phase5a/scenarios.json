@@ -1,0 +1,105 @@
+{
+  "original": {
+    "fixture": "project.json",
+    "taskQuery": "登录模块",
+    "taskQualifier": "OAuth callback",
+    "documentQuery": "设计复核",
+    "documentTitle": "tokenTimeout 设计复核",
+    "targetRef": "login",
+    "commentCount": 3,
+    "indexQuery": "tokenTimeout",
+    "claims": [
+      {
+        "text": "登录模块当前 TODO、P1。",
+        "sources": [
+          "login"
+        ]
+      },
+      {
+        "text": "先核对 OAuth callback 回调配置，再复测网络重试；最终根因尚未确认。",
+        "sources": [
+          "design"
+        ]
+      },
+      {
+        "text": "过去曾说 DONE，但已重新打开；最近补充 traceId，没有新的复测结果。",
+        "sources": [
+          "history-comment",
+          "trace-comment"
+        ]
+      }
+    ]
+  },
+  "changed-objects": {
+    "fixture": "changed-objects.json",
+    "taskQuery": "退款回调",
+    "taskQualifier": "星桥批量退款通道",
+    "documentQuery": "退款回调复核",
+    "documentTitle": "退款回调复核：星桥批量",
+    "targetRef": "target",
+    "commentCount": 3,
+    "indexQuery": "星桥",
+    "candidateCount": 2,
+    "claims": [
+      {
+        "text": "星桥批量退款通道的退款回调当前 IN_PROGRESS、P0；旧商城的同名任务不适用于本次接手。",
+        "sources": [
+          "target"
+        ]
+      },
+      {
+        "text": "已确认根因是批次 ACK 去重键漏掉商户号。先把商户号纳入幂等键，再灰度回放两个商户的同号批次。",
+        "sources": [
+          "design"
+        ]
+      },
+      {
+        "text": "早期曾怀疑网络重试，后来复现了去重键冲突；修复已合并，但灰度尚未完成，不能说已通过上线验收。",
+        "sources": [
+          "history-comment",
+          "confirmed-comment",
+          "latest-comment"
+        ]
+      }
+    ],
+    "firstCandidateIsDistractor": true
+  },
+  "long-material": {
+    "fixture": "long-material.json",
+    "taskQuery": "归档恢复",
+    "taskQualifier": "海岬归档",
+    "documentQuery": "海岬归档恢复演练记录",
+    "documentTitle": "海岬归档恢复演练记录",
+    "targetRef": "target",
+    "commentCount": 2,
+    "indexQuery": "海岬",
+    "tailMarker": "最终批准：",
+    "tailFacts": [
+      "读取超时保持 30 秒",
+      "每批恢复 128 个对象",
+      "隔离桶连续回放 3 批",
+      "SHA-256",
+      "分页游标在重试时重置"
+    ],
+    "claims": [
+      {
+        "text": "海岬归档恢复当前 TODO、P2。",
+        "sources": [
+          "target"
+        ]
+      },
+      {
+        "text": "最终批准：读取超时保持 30 秒，不采用 90 秒方案；每批恢复 128 个对象。先在隔离桶连续回放 3 批，逐批校验 SHA-256；任一摘要不一致就停止并回滚该批。根因已确认是分页游标在重试时重置导致漏读，不是超时阈值太低。当前仅完成离线复现，线上灰度尚未开始。",
+        "sources": [
+          "design"
+        ]
+      },
+      {
+        "text": "最新评论确认线上灰度尚未开始，应按最终参数准备隔离回放。",
+        "sources": [
+          "latest-comment"
+        ]
+      }
+    ]
+  }
+}

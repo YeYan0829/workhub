@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "name": "星桥结算 / 同名对象辨别",
+  "tasks": [
+    {
+      "ref": "target",
+      "title": "退款回调",
+      "description": "星桥批量退款通道；批次 ACK 出现重复入账，当前修复待灰度。",
+      "status": "IN_PROGRESS",
+      "type": "BUG",
+      "priority": 0,
+      "assigned": true,
+      "createdAt": "2026-09-30 08:00:00",
+      "updatedAt": "2026-10-09 08:00:00"
+    },
+    {
+      "ref": "legacy",
+      "title": "退款回调",
+      "description": "旧商城单笔退款通道，已经停用；不处理星桥批量退款。",
+      "status": "DONE",
+      "type": "BUG",
+      "priority": 3,
+      "assigned": true,
+      "createdAt": "2026-09-30 08:00:01",
+      "updatedAt": "2026-10-09 08:00:01"
+    },
+    {
+      "ref": "release",
+      "title": "结算发布",
+      "description": "星桥批量退款修复完成后发布。",
+      "status": "TODO",
+      "type": "BUG",
+      "priority": 1,
+      "assigned": true,
+      "createdAt": "2026-09-30 08:00:02",
+      "updatedAt": "2026-10-09 08:00:02"
+    }
+  ],
+  "dependencies": [
+    [
+      "target",
+      "release"
+    ]
+  ],
+  "documents": [
+    {
+      "ref": "design",
+      "title": "退款回调复核：星桥批量",
+      "body": "星桥批量退款的重复入账根因已确认：批次 ACK 去重键漏掉商户号，造成跨商户冲突。先把商户号纳入幂等键，再灰度回放两个商户的同号批次。灰度尚未完成，不能宣称已经上线验收。",
+      "updatedAt": "2026-10-09 08:30:00"
+    },
+    {
+      "ref": "legacy-design",
+      "title": "退款回调复核：旧商城",
+      "body": "旧商城单笔退款已经验收完成，后续无需操作。历史根因是回调地址错误。此结论不适用于星桥批量退款。",
+      "updatedAt": "2026-10-09 08:30:01"
+    },
+    {
+      "ref": "noise",
+      "title": "登录模块设计复核",
+      "body": "另一条登录模块任务仍为 TODO、P1，先核对 OAuth callback；根因尚未确认。与退款无关。",
+      "updatedAt": "2026-10-09 08:30:02"
+    }
+  ],
+  "comments": [
+    {
+      "ref": "history-comment",
+      "task": "target",
+      "body": "起初怀疑网络重试导致重复入账，尚无证据。",
+      "createdAt": "2026-10-02 10:00:00"
+    },
+    {
+      "ref": "confirmed-comment",
+      "task": "target",
+      "body": "已用两个商户的同号批次复现去重键冲突，根因确认。",
+      "createdAt": "2026-10-08 10:00:00"
+    },
+    {
+      "ref": "latest-comment",
+      "task": "target",
+      "body": "修复已合并，等待灰度；尚未提交灰度回放结果。",
+      "createdAt": "2026-10-09 10:00:00"
+    },
+    {
+      "ref": "legacy-comment",
+      "task": "legacy",
+      "body": "旧商城退款已验收完成，可以结束。",
+      "createdAt": "2026-10-09 10:00:00"
+    }
+  ],
+  "question": "我准备接手星桥批量退款通道的退款回调，项目里还有旧商城的同名任务。请找对任务，说明当前状态、优先级、确认的根因、接下来怎么验证，以及最新讨论是否证明已完成验收。",
+  "expected": {
+    "status": "IN_PROGRESS",
+    "priority": 0,
+    "rootCause": "批次 ACK 去重键漏掉商户号",
+    "nextSteps": [
+      "商户号纳入幂等键",
+      "灰度回放两个商户同号批次"
+    ],
+    "history": "从网络重试猜测转为已复现的幂等键冲突；已合并但灰度未完成",
+    "wrongAnswers": [
+      "旧商城 DONE/P3",
+      "OAuth callback 排查",
+      "根因尚未确认",
+      "已上线验收"
+    ]
+  },
+  "projectCreatedAt": "2026-09-29 08:00:00"
+}

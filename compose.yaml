@@ -1,0 +1,93 @@
+name: workhub
+services:
+  mailpit:
+    image: axllent/mailpit:v1.27@sha256:e22dce5b36f93c77082e204a3942fb6b283b7896e057458400a4c88344c3df68
+    # Local delivery must not wait for container/client reverse-DNS resolution.
+    command: [--smtp-disable-rdns]
+    profiles: [async, full]
+    ports: ["127.0.0.1:${SMTP_PORT:-11025}:1025", "127.0.0.1:${MAILPIT_PORT:-18025}:8025"]
+    mem_limit: 128m
+  mysql:
+    image: mysql:8.4.11@sha256:85b9bf2e29cf836ecb8c2a15a935d4ba0c606631dff1dd79531a11983c638f2a
+    profiles: [minimal, async, retrieval, full]
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-workhub}
+      MYSQL_USER: ${MYSQL_USER:-workhub}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Run scripts/init-env.py}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Run scripts/init-env.py}
+    command: [--innodb-buffer-pool-size=134217728, --max-connections=30, --performance-schema=ON]
+    ports: ["127.0.0.1:${MYSQL_PORT:-13306}:3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./scripts/mysql-init.sh:/docker-entrypoint-initdb.d/10-contract-db.sh:ro
+    mem_limit: 768m
+    cpus: 2
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql -u"$$MYSQL_USER" -D"$$MYSQL_DATABASE" -e "SELECT 1" >/dev/null 2>&1']
+      interval: 5s
+      timeout: 4s
+      retries: 40
+      start_period: 30s
+  rabbitmq:
+    image: rabbitmq:4.3.5@sha256:078107e036374f4d9bbeab8766799abe474bf252aedb4617ddd2edfa8e2c2c05
+    profiles: [async, retrieval, full]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-workhub}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Run scripts/init-env.py}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '+S 2:2'
+    ports: ["127.0.0.1:${RABBITMQ_PORT:-15672}:5672"]
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    mem_limit: 384m
+    cpus: 2
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 10s
+      timeout: 8s
+      retries: 20
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.3@sha256:f456578fc2a620a8a4f4c21d070fff1f6070345adb2be5e5626b65be72aea350
+    profiles: [retrieval, full]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      xpack.license.self_generated.type: basic
+      xpack.ml.enabled: 'false'
+      ES_JAVA_OPTS: '-Xms384m -Xmx384m -XX:ActiveProcessorCount=2'
+    ports: ["127.0.0.1:${ELASTICSEARCH_PORT:-19200}:9200"]
+    volumes: [elasticsearch-data:/usr/share/elasticsearch/data]
+    mem_limit: 1024m
+    cpus: 2
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s" >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+  redis:
+    image: redis:8.2.9@sha256:7d1e4ce8b9395088377ab382d1f6cfdbd13b3690795198a0399ab8d683064d6d
+    profiles: [full]
+    command: [redis-server, --save, '', --appendonly, 'no', --maxmemory, 64mb, --maxmemory-policy, allkeys-lru]
+    ports: ["127.0.0.1:${REDIS_PORT:-16379}:6379"]
+    mem_limit: 128m
+    cpus: 1
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  model-admission-redis:
+    image: redis:8.2.9@sha256:7d1e4ce8b9395088377ab382d1f6cfdbd13b3690795198a0399ab8d683064d6d
+    profiles: [model-governance]
+    command: [redis-server, --save, '', --appendonly, 'no', --maxmemory, 64mb, --maxmemory-policy, noeviction]
+    ports: ["127.0.0.1:${MODEL_ADMISSION_REDIS_PORT:-16380}:6379"]
+    mem_limit: 128m
+    cpus: 1
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  mysql-data:
+  rabbitmq-data:
+  elasticsearch-data:

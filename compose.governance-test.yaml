@@ -1,0 +1,15 @@
+# Disposable Redis for ModelAdmissionIT, including actual restart/state-loss checks.
+# The test requires this exact name and port; never point it at a shared Redis.
+name: workhub-test-model-admission
+services:
+  redis:
+    container_name: workhub-w2-redis
+    image: redis:8.2.9@sha256:7d1e4ce8b9395088377ab382d1f6cfdbd13b3690795198a0399ab8d683064d6d
+    ports: ["127.0.0.1:26379:6379"]
+    command: [redis-server, --maxmemory-policy, noeviction, --save, '', --appendonly, 'no']
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 30

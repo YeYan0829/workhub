@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "name": "海岬归档 / 长文交接",
+  "tasks": [
+    {
+      "ref": "target",
+      "title": "归档恢复",
+      "description": "海岬归档恢复演练；具体批次参数与停止条件见恢复演练记录的最终批准结论。",
+      "status": "TODO",
+      "type": "BUG",
+      "priority": 2,
+      "assigned": true,
+      "createdAt": "2026-09-30 08:00:00",
+      "updatedAt": "2026-10-09 08:00:00"
+    },
+    {
+      "ref": "noise",
+      "title": "日志归档",
+      "description": "日志定时归档已完成，与对象恢复无关。",
+      "status": "DONE",
+      "type": "BUG",
+      "priority": 3,
+      "assigned": true,
+      "createdAt": "2026-09-30 08:00:01",
+      "updatedAt": "2026-10-09 08:00:01"
+    }
+  ],
+  "dependencies": [],
+  "documents": [
+    {
+      "ref": "design",
+      "title": "海岬归档恢复演练记录",
+      "bodyFile": "long-material.md",
+      "updatedAt": "2026-10-09 08:30:00"
+    },
+    {
+      "ref": "noise-doc",
+      "title": "旧版恢复流程",
+      "body": "旧测试曾使用 512 个对象一批；不适用于海岬归档。",
+      "updatedAt": "2026-10-09 08:30:01"
+    }
+  ],
+  "comments": [
+    {
+      "ref": "history-comment",
+      "task": "target",
+      "body": "等待完整实验记录，不批准初始提案。",
+      "createdAt": "2026-10-02 10:00:00"
+    },
+    {
+      "ref": "latest-comment",
+      "task": "target",
+      "body": "最终批准记录已归档，线上灰度尚未开始。按文档最终参数准备隔离回放。",
+      "createdAt": "2026-10-09 10:00:00"
+    }
+  ],
+  "question": "我接手海岬归档恢复，请根据恢复演练记录的最终批准结论和最新讨论，说明当前任务状态与优先级、真正根因、实际采用的超时和每批数量、先做什么验证、何时必须停止，以及线上灰度是否已开始。不要把早期提案当成最终方案。",
+  "expected": {
+    "status": "TODO",
+    "priority": 2,
+    "rootCause": "重试时分页游标重置导致漏读",
+    "timeoutSeconds": 30,
+    "batchSize": 128,
+    "nextSteps": [
+      "隔离桶连续回放 3 批",
+      "逐批校验 SHA-256"
+    ],
+    "stop": "任一摘要不一致就停止并回滚该批",
+    "rollout": "仅离线复现；线上灰度未开始",
+    "wrongAnswers": [
+      "90 秒",
+      "512 个对象",
+      "直接全量恢复",
+      "超时太低导致",
+      "灰度已开始"
+    ]
+  },
+  "projectCreatedAt": "2026-09-29 08:00:00"
+}

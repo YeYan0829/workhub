@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Work Hub · 团队协作</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <button id="navigation-toggle" class="secondary" aria-label="展开导航" aria-controls="sidebar" aria-expanded="false" hidden>☰</button>
+      <a class="brand" href="#mine">WorkHub</a>
+      <nav id="account-nav" aria-label="账号"></nav>
+    </header>
+    <div class="app-shell">
+      <aside id="sidebar" aria-label="主导航">
+        <nav id="nav"></nav>
+        <div id="scope-nav"></div>
+      </aside>
+      <div class="workspace-content">
+        <div id="notice" role="status" aria-live="polite"></div>
+        <main id="app"><p>正在加载…</p></main>
+      </div>
+    </div>
+    <div id="navigation-backdrop" hidden></div>
+    <button id="assistant-toggle" class="secondary" aria-controls="project-assistant" aria-expanded="false" hidden>✦ 项目助手</button>
+    <div id="assistant-backdrop" hidden></div>
+    <aside id="project-assistant" aria-label="项目助手" hidden>
+      <div class="assistant-panel-header"><div><strong>项目助手</strong><small id="assistant-project"></small></div><button id="assistant-close" class="secondary" aria-label="收起项目助手" title="收起项目助手">›</button></div>
+      <div class="assistant-toolbar"><span id="assistant-new-slot"></span><button id="assistant-history" class="secondary" aria-expanded="false">历史会话</button><span class="muted" title="会话仅自己可见">私人</span></div>
+      <div id="assistant-body"></div>
+    </aside>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

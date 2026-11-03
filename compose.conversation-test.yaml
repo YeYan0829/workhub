@@ -1,0 +1,37 @@
+name: workhub-conversation-test
+services:
+  mysql:
+    image: mysql:8.4.11@sha256:85b9bf2e29cf836ecb8c2a15a935d4ba0c606631dff1dd79531a11983c638f2a
+    environment:
+      MYSQL_ROOT_PASSWORD: conversation-local-root
+      MYSQL_DATABASE: workhub_conversation_test
+      MYSQL_USER: conversation
+      MYSQL_PASSWORD: conversation-local-test
+    ports: ["127.0.0.1:23316:3306"]
+    command: ["--innodb-buffer-pool-size=128M"]
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD, mysqladmin, ping, -h, localhost, -pconversation-local-root]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  rabbitmq:
+    image: rabbitmq:4.3.5@sha256:078107e036374f4d9bbeab8766799abe474bf252aedb4617ddd2edfa8e2c2c05
+    environment:
+      RABBITMQ_DEFAULT_USER: conversation
+      RABBITMQ_DEFAULT_PASS: conversation-local-test
+      RABBITMQ_DEFAULT_VHOST: conversation_test
+      RABBITMQ_ERLANG_COOKIE: conversation-isolated-fixture-cookie
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '+S 2:2 -setcookie conversation-isolated-fixture-cookie'
+      RABBITMQ_CTL_ERL_ARGS: '+S 1:1 -setcookie conversation-isolated-fixture-cookie'
+    volumes: [conversation-rabbit:/var/lib/rabbitmq]
+    ports: ["127.0.0.1:23317:5672"]
+    mem_limit: 384m
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  conversation-rabbit:

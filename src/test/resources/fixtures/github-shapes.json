@@ -1,0 +1,13 @@
+{
+  "provenance": "Synthetic Phase 0 fixtures shaped from GitHub REST documentation; not live API evidence",
+  "issues": [
+    {"id":101,"number":1,"state":"open","state_reason":null,"title":"fixture","body":"test","updated_at":"2026-09-15T00:00:00Z"},
+    {"id":101,"number":1,"state":"closed","state_reason":"completed"},
+    {"id":101,"number":1,"state":"closed","state_reason":"not_planned"},
+    {"id":101,"number":1,"state":"closed","state_reason":"duplicate"},
+    {"id":101,"number":1,"state":"open","state_reason":"reopened"},
+    {"id":202,"number":2,"state":"open","pull_request":{"url":"https://api.github.com/repos/fixture/repo/pulls/2"}}
+  ],
+  "comment":{"id":303,"body":"fixture comment","user":{"login":"fixture"},"created_at":"2026-09-15T00:00:00Z","updated_at":"2026-09-15T00:00:01Z"},
+  "workflow_run":{"id":404,"run_attempt":2,"workflow_id":505,"head_sha":"0123456789abcdef0123456789abcdef01234567","status":"completed","conclusion":"success","html_url":"https://github.com/fixture/repo/actions/runs/404"}
+}

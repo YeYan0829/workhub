@@ -1,0 +1,19 @@
+# Isolated broker for restart/queue-loss fault tests. No daily service is restarted.
+name: workhub-test-faults
+services:
+  rabbitmq:
+    image: rabbitmq:4.3.5@sha256:078107e036374f4d9bbeab8766799abe474bf252aedb4617ddd2edfa8e2c2c05
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-workhub}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Run scripts/init-env.py}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: '+S 2:2'
+    ports: ["127.0.0.1:15673:5672"]
+    volumes: [test-rabbit:/var/lib/rabbitmq]
+    mem_limit: 384m
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+volumes:
+  test-rabbit:

@@ -1,0 +1,5 @@
+title,description,type,priority,due_date,assignee_login
+确认发布清单,核对发布说明与回滚步骤,TASK,2,,
+修复文档链接,更新团队上手页面,BUG,1,,
+错误优先级示例,此行应报告失败,TASK,9,,
+未知负责人示例,此行应报告成员不匹配,TASK,2,,not-a-project-member

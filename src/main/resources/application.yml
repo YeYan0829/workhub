@@ -1,0 +1,144 @@
+spring:
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1100KB
+  mail:
+    host: ${SMTP_HOST:127.0.0.1}
+    port: ${SMTP_PORT:11025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+  application:
+    name: workhub
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:13306}/${MYSQL_DATABASE:workhub}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true&sslMode=DISABLED
+    username: ${MYSQL_USER:workhub}
+    password: ${MYSQL_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+      connection-timeout: 5000
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  session:
+    jdbc:
+      initialize-schema: never
+  flyway:
+    enabled: true
+    fail-on-missing-locations: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:15672}
+    username: ${RABBITMQ_USER:workhub}
+    password: ${RABBITMQ_PASSWORD:unused-in-minimal}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        auto-startup: false
+        acknowledge-mode: manual
+        prefetch: 1
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:16379}
+      connect-timeout: 2s
+      timeout: 2s
+  elasticsearch:
+    uris: http://${ELASTICSEARCH_HOST:127.0.0.1}:${ELASTICSEARCH_PORT:19200}
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: lax
+  address: 127.0.0.1
+  port: ${APP_PORT:18080}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  health:
+    rabbit:
+      enabled: false
+    redis:
+      enabled: false
+    elasticsearch:
+      enabled: false
+
+workhub:
+  model-admission:
+    enabled: ${WORKHUB_MODEL_ADMISSION_ENABLED:false}
+    scope: ${WORKHUB_MODEL_QUOTA_SCOPE:}
+    requests-per-second: ${WORKHUB_MODEL_RATE:2}
+    burst: ${WORKHUB_MODEL_BURST:1}
+    redis-host: ${MODEL_ADMISSION_REDIS_HOST:127.0.0.1}
+    redis-port: ${MODEL_ADMISSION_REDIS_PORT:16380}
+    redis-password: ${MODEL_ADMISSION_REDIS_PASSWORD:}
+  agent:
+    enabled: ${WORKHUB_AGENT_ENABLED:false}
+    endpoint: ${WORKHUB_GLM_ENDPOINT:https://api.z.ai/api/paas/v4/chat/completions}
+    model: ${WORKHUB_GLM_MODEL:glm-4.7}
+    api-key: ${WORKHUB_GLM_API_KEY:}
+    paid-approved: ${WORKHUB_GLM_PAID_APPROVED:false}
+    authorization-id: ${WORKHUB_GLM_AUTHORIZATION_ID:}
+    budget-usd: ${WORKHUB_GLM_BUDGET_USD:0}
+  embedding:
+    enabled: ${WORKHUB_EMBEDDING_ENABLED:false}
+    config-id: ${WORKHUB_EMBEDDING_CONFIG_ID:2}
+    model: ${WORKHUB_EMBEDDING_MODEL:text-embedding-v4}
+    dimensions: ${WORKHUB_EMBEDDING_DIMENSIONS:1024}
+    protocol: ${WORKHUB_EMBEDDING_PROTOCOL:dashscope}
+    endpoint: ${MODEL_EMBEDDING_ENDPOINT:}
+    api-key: ${MODEL_API_KEY:}
+    index: ${WORKHUB_EMBEDDING_INDEX:workhub-vector-v2}
+    paid-approved: ${WORKHUB_EMBEDDING_PAID_APPROVED:false}
+    run-id: ${WORKHUB_EMBEDDING_RUN_ID:}
+    budget-usd: ${WORKHUB_EMBEDDING_BUDGET_USD:1}
+    price-nanousd-per-token: ${WORKHUB_EMBEDDING_PRICE_NANOUSD_PER_TOKEN:72}
+  retrieval:
+    enabled: ${WORKHUB_RETRIEVAL_ENABLED:false}
+    es-url: http://${ELASTICSEARCH_HOST:127.0.0.1}:${ELASTICSEARCH_PORT:19200}
+    index: ${WORKHUB_RETRIEVAL_INDEX:workhub-text-v1}
+  public-url: ${WORKHUB_PUBLIC_URL:http://127.0.0.1:18080}
+  mail:
+    key-file: ${WORKHUB_MAIL_KEY_FILE:.tools/mail.key}
+    from: ${WORKHUB_MAIL_FROM:workhub@localhost}
+  messaging:
+    enabled: ${WORKHUB_MESSAGING_ENABLED:false}
+    consumer-enabled: true
+    poll-ms: 500
+    confirm-timeout-ms: 5000
+    recovery-epoch: ${WORKHUB_RECOVERY_EPOCH:}
+  bootstrap:
+    login: ${WORKHUB_BOOTSTRAP_LOGIN:}
+    password: ${WORKHUB_BOOTSTRAP_PASSWORD:}
+    workspace: ${WORKHUB_BOOTSTRAP_WORKSPACE:Work Hub}
+  dependency:
+    timeout-seconds: 2
+    max-recursion-depth: 1000
+  github:
+    enabled: ${WORKHUB_GITHUB_ENABLED:false}
+    dispatch-enabled: ${WORKHUB_GITHUB_DISPATCH_ENABLED:false}
+    app-id: ${GITHUB_APP_ID:}
+    private-key-file: ${GITHUB_APP_PRIVATE_KEY_FILE:}
+    install-url: ${GITHUB_APP_INSTALL_URL:}
+    webhook-secret: ${GITHUB_WEBHOOK_SECRET:}
+    api-base: https://api.github.com
