@@ -8,8 +8,10 @@ import org.springframework.http.HttpStatus;
 
 @RestController
 public class ConversationController {
-  private final ConversationService conversations; private final CurrentActor actors;
-  public ConversationController(ConversationService conversations,CurrentActor actors){this.conversations=conversations;this.actors=actors;}
+  private final ConversationService conversations; private final CurrentActor actors; private final AgentRuns runs;
+  public ConversationController(ConversationService conversations,CurrentActor actors,AgentRuns runs){this.conversations=conversations;this.actors=actors;this.runs=runs;}
+  @GetMapping("/projects/{p}/agent/availability")
+  public Object availability(Principal u,@PathVariable UUID p){return runs.availability(actors.from(u),p);}
   @GetMapping("/me/agent/conversations")
   public Object list(Principal u,@RequestParam(required=false) UUID projectId,@RequestParam(defaultValue="false") boolean archived,
       @RequestParam(defaultValue="") String q,@RequestParam(required=false) String cursor,@RequestParam(defaultValue="20") int limit){return conversations.list(actors.from(u),projectId,archived,q,cursor,limit);}

@@ -288,7 +288,11 @@ public class CollaborationService {
         result.put("blockers", tasks.blockers(p, t).stream().map(TaskResponse::from).toList());
         result.put("downstream", tasks.downstream(p, t).stream().map(TaskResponse::from).toList());
         result.put("links", content.links(a, p, t));
-        result.put("comments", content.comments(a, p, t, null, 50));
+        var recent = content.commentPage(a, p, t, null, 51, "DESC", null);
+        var comments = new ArrayList<>(recent.subList(0, Math.min(50, recent.size())));
+        Collections.reverse(comments);
+        result.put("comments", comments);
+        result.put("commentsHasMore", recent.size() > 50);
         result.put(
                 "activities",
                 db.queryForList(

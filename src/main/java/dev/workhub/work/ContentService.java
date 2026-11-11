@@ -296,8 +296,15 @@ public class ContentService {
     @Transactional(readOnly = true)
     public List<ContentRepository.Document> documents(
             ActorContext actor, UUID project, TaskRepository.Cursor cursor, int limit) {
+        return documents(actor, project, cursor, limit, "");
+    }
+
+    @Transactional(readOnly = true)
+    public List<ContentRepository.Document> documents(
+            ActorContext actor, UUID project, TaskRepository.Cursor cursor, int limit, String query) {
         access.read(actor, project);
-        return content.documents(project, cursor, Inputs.limit(limit));
+        if (query == null || query.length() > 200) throw ApiException.invalid("文档搜索最多200个字符");
+        return content.documents(project, cursor, Inputs.limit(limit), query.strip());
     }
 
     @Transactional(readOnly = true)
@@ -306,6 +313,26 @@ public class ContentService {
         access.read(actor, project);
         requireTask(project, task);
         return content.comments(project, task, cursor, Inputs.limit(limit));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ContentRepository.Comment> commentPage(
+            ActorContext actor, UUID project, UUID task, TaskRepository.Cursor cursor,
+            int limit, String order, UUID focus) {
+        access.read(actor, project);
+        requireTask(project, task);
+        limit = Inputs.limit(limit);
+        if (!Set.of("ASC", "DESC").contains(order)) throw ApiException.invalid("Invalid comment order");
+        boolean newestFirst = order.equals("DESC");
+        if (focus == null) return content.comments(project, task, cursor, limit, newestFirst);
+        if (!newestFirst || cursor != null) throw ApiException.invalid("Focused comments require DESC without a cursor");
+        // The anchor is checked against both project and task; never seek into another task.
+        var anchor = comment(project, task, focus);
+        var result = new ArrayList<ContentRepository.Comment>();
+        result.add(anchor);
+        if (limit > 1) result.addAll(content.comments(project, task,
+                new TaskRepository.Cursor(anchor.createdAt(), anchor.id()), limit - 1, true));
+        return List.copyOf(result);
     }
 
     @Transactional(readOnly = true)
@@ -332,14 +359,16 @@ public class ContentService {
         return terms;
     }
 
-    public record Links(List<UUID> documents, List<ContentRepository.Resource> resources) {}
+    public record Links(List<UUID> documents, List<ContentRepository.Resource> resources,
+            List<ContentRepository.DocumentReference> documentDetails) {}
 
     @Transactional(readOnly = true)
     public Links links(ActorContext actor, UUID project, UUID task) {
         access.read(actor, project);
         requireTask(project, task);
-        return new Links(
-                content.linkedDocuments(project, task), content.linkedResources(project, task));
+        var documents = content.linkedDocumentDetails(project, task);
+        return new Links(documents.stream().map(ContentRepository.DocumentReference::id).toList(),
+                content.linkedResources(project, task), documents);
     }
 
     private ContentRepository.Document document(UUID project, UUID id) {

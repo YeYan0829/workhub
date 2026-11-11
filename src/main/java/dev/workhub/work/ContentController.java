@@ -70,8 +70,9 @@ public class ContentController {
             Principal user,
             @PathVariable UUID p,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "50") int limit) {
-        return service.documents(actors.from(user), p, cursor(cursor), limit);
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "") String q) {
+        return service.documents(actors.from(user), p, cursor(cursor), limit, q);
     }
 
     @PostMapping("/tasks/{t}/comments")
@@ -113,8 +114,10 @@ public class ContentController {
             @PathVariable UUID p,
             @PathVariable UUID t,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "50") int limit) {
-        return service.comments(actors.from(user), p, t, cursor(cursor), limit);
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "ASC") String order,
+            @RequestParam(required = false) UUID focus) {
+        return service.commentPage(actors.from(user), p, t, cursor(cursor), limit, order, focus);
     }
 
     @PutMapping("/tasks/{t}/subscription")

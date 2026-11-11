@@ -15,6 +15,11 @@ public class AgentRuns {
   private final ProjectAccess access;private final AgentSettings c;private final JdbcTemplate db;
   private final Json json;private final BusinessJobs jobs;private final OperationReceipts receipts;private final AgentTools tools;
   public AgentRuns(ProjectAccess access,AgentSettings c,JdbcTemplate db,Json json,BusinessJobs jobs,OperationReceipts receipts,AgentTools tools){this.access=access;this.c=c;this.db=db;this.json=json;this.jobs=jobs;this.receipts=receipts;this.tools=tools;}
+  @Transactional(readOnly=true)
+  public Map<String,Boolean> availability(ActorContext actor,UUID project) {
+    access.read(actor,project);
+    return Map.of("enabled",c.enabled);
+  }
   public Map<String,Object> contract(boolean triage) {
     if(!triage)return c.contract();
     var value=new TreeMap<String,Object>(c.contract());

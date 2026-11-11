@@ -160,7 +160,16 @@ public class ContentRepository {
 
     public List<Comment> comments(
             UUID project, UUID task, TaskRepository.Cursor cursor, int limit) {
-        String condition = cursor == null ? "" : " AND (created_at>? OR (created_at=? AND id>?))";
+        return comments(project, task, cursor, limit, false);
+    }
+
+    public List<Comment> comments(
+            UUID project, UUID task, TaskRepository.Cursor cursor, int limit, boolean newestFirst) {
+        String comparison = newestFirst ? "<" : ">";
+        String condition = cursor == null ? "" : " AND (created_at" + comparison
+                + "? OR (created_at=? AND id" + comparison + "?))";
+        String ordering = newestFirst ? " ORDER BY created_at DESC,id DESC LIMIT ?"
+                : " ORDER BY created_at,id LIMIT ?";
         List<Object> args = new ArrayList<>();
         args.add(bytes(project));
         args.add(bytes(task));
@@ -173,7 +182,7 @@ public class ContentRepository {
         return jdbc.query(
                 "SELECT * FROM comment WHERE deleted=FALSE AND project_id=? AND task_id=?"
                         + condition
-                        + " ORDER BY created_at,id LIMIT ?",
+                        + ordering,
                 (r, n) ->
                         new Comment(
                                 read(r, "id"),
@@ -262,6 +271,17 @@ public class ContentRepository {
                 (r, n) -> uuid(r.getBytes(1)),
                 bytes(project),
                 bytes(task));
+    }
+
+    public record DocumentReference(UUID id, String title) {}
+
+    public List<DocumentReference> linkedDocumentDetails(UUID project, UUID task) {
+        return jdbc.query(
+                "SELECT d.id,d.title FROM task_document t JOIN project_document d ON"
+                    + " d.project_id=t.project_id AND d.id=t.document_id WHERE t.project_id=?"
+                    + " AND t.task_id=? AND NOT d.deleted ORDER BY d.title,d.id",
+                (r, n) -> new DocumentReference(read(r, "id"), r.getString("title")),
+                bytes(project), bytes(task));
     }
 
     public List<Resource> linkedResources(UUID project, UUID task) {

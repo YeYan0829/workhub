@@ -28,7 +28,7 @@ SCRIPT_FILES = {
     'init-phase3-test-env.sh', 'init-phase3x-test-env.sh',
     'init-phase4-test-env.sh', 'init-phase4b-test-env.sh', 'init-phase5a-test-env.sh',
     'verify-automatic-triage-ui.cjs', 'verify-phase5b-ui.cjs', 'verify-w3-progress.cjs',
-    'check-public-tree.py', 'test-public-tree.py', 'verify-docker-ui.cjs',
+    'check-public-tree.py', 'test-public-tree.py', 'verify-docker-ui.cjs', 'verify-frontend-ui.cjs',
 }
 REQUIRED = ROOT_FILES | DOC_FILES | {'scripts/' + name for name in SCRIPT_FILES}
 FORBIDDEN_PARTS = {

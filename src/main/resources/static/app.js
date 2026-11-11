@@ -16,7 +16,7 @@ const input = (name, label, type = "text", value = "", required = true) =>
 const select = (name, label, values, current = "") =>
   `<label>${label?label+"<br>":""}<select name="${name}" ${label?"":'aria-label="切换团队"'}>${values.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(current) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
 const form = (id, title, fields, button = "保存") =>
-  `<form id="${id}"><h2>${title}</h2>${fields}<button>${button}</button></form>`;
+  `<form id="${id}" aria-label="${esc(title)}"><h2>${title}</h2>${fields}<button>${button}</button></form>`;
 const table = (headers, rows, empty = "暂无记录。") =>
   rows.length
     ? `<div class="table-scroll" tabindex="0" role="region" aria-label="数据列表"><table><thead><tr>${headers.map((x) => `<th>${esc(x)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
@@ -113,7 +113,7 @@ const vocabulary = {
   TASK_SUBMITTED: "提交待分诊任务", TASK_ACCEPTED: "接纳任务", TASK_REJECTED: "拒绝申请", TASK_WITHDRAWN: "撤回申请", TASK_RETURNED_TO_TRIAGE: "退回分诊", REASSIGNMENT_REQUESTED: "申请更换负责人", REASSIGNMENT_APPROVED: "批准更换负责人", REASSIGNMENT_REJECTED: "拒绝更换负责人",
   TASK_CREATED: "创建任务", TASK_UPDATED: "更新任务", TASK_UNBLOCKED: "解除上游阻塞",
   COMMENT_CREATED: "发布评论", COMMENT_UPDATED: "编辑评论", COMMENT_DELETED: "删除评论",
-  DEPENDENCY_ADDED: "添加依赖", DEPENDENCY_REMOVED: "移除依赖", DOCUMENT_LINKED: "关联文档",
+  LINK_ADDED: "关联资料", LINK_REMOVED: "解除资料关联", DEPENDENCY_ADDED: "添加依赖", DEPENDENCY_REMOVED: "移除依赖", DOCUMENT_LINKED: "关联文档",
   URL_LINKED: "关联网页", INVITATION_CREATED: "发送团队邀请", INVITATION_ACCEPTED: "接受团队邀请",
   MEMBER_CHANGED: "变更成员权限", PROJECT_HANDOVER: "交接项目维护权", PROJECT_MEMBERSHIP_CHANGED: "变更项目成员权限", PROJECT_UPDATED: "更新项目",
   PROJECT_ARCHIVED: "归档项目", WORKSPACE_CREATED: "建立团队", WORKSPACE_RENAMED: "修改团队名称", MEMBER_INVITED: "邀请成员", INVITATION_REVOKED: "撤回邀请", MAINTAINER_HANDOVER: "交接项目维护权", WORKSPACE_UPDATED: "更新团队", SYNC_ERROR: "同步需要处理"
@@ -234,6 +234,53 @@ function bind(id, fn) {
     run(() => fn(values, el)).finally(() => (button.disabled = false));
   });
 }
+// Persist only ordinary creation forms, never account credentials or model requests.
+// A lost response keeps the original payload and key until that intent is confirmed.
+function bindCreation(id, path, prepare, created) {
+  const el = $("#" + id);
+  if (!el) return;
+  const actor = me.userId, storageKey = `creation:${actor}:${id}:${path}`;
+  let pending, sending = false;
+  try { pending = JSON.parse(sessionStorage.getItem(storageKey) || "null"); }
+  catch { sessionStorage.removeItem(storageKey); }
+  if (pending && (pending.actor !== actor || pending.path !== path || !pending.key || !pending.body || !pending.values)) {
+    pending = null; sessionStorage.removeItem(storageKey);
+  }
+  const submit = el.querySelector("button:not([type]),button[type=submit]"), originalLabel = submit.textContent;
+  const status = document.createElement("p");status.className = "form-status";status.setAttribute("role", "status");el.append(status);
+  function sync() {
+    for (const field of el.querySelectorAll("input,textarea,select")) {
+      if (pending && field.name in pending.values) field.value = pending.values[field.name];
+      field.disabled = !!pending;
+    }
+    submit.textContent = sending ? "正在提交…" : pending ? "确认上次提交" : originalLabel;
+    status.textContent = sending ? "正在保存，请稍候。" : pending ? "上次提交结果尚未确认。再次提交会核对原请求，避免重复创建；确认后可继续新建。" : "";
+  }
+  sync();
+  bind(id, async values => {
+    const current = await api("/session/me");
+    if (current.userId !== actor) throw new Error("登录账号已变化，请刷新页面后继续；原账号的待确认提交仍保留。");
+    if (!pending) {
+      pending = { actor, path, key: crypto.randomUUID(), values, body: prepare(values) };
+      sessionStorage.setItem(storageKey, JSON.stringify(pending));
+    }
+    sending = true;sync();
+    let value;
+    try { value = await api(path, "POST", pending.body, {"Idempotency-Key": pending.key}); }
+    catch (error) {
+      if ([400, 409, 413, 415, 422].includes(error.status)) {
+        pending = null;sessionStorage.removeItem(storageKey);
+      }
+      sending = false;sync();
+      throw error;
+    }
+    pending = null;sending = false;sessionStorage.removeItem(storageKey);sync();
+    await created(value);
+  });
+}
+
+const contentCursor = (item, field = "updatedAt") => item ? `${item[field]}~${item.id}` : "";
+
 function button(id, fn) {
   const el = $("#" + id);
   if (el) el.onclick = () => {
@@ -380,7 +427,7 @@ function refinePageLayout() {
     const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='取消';cancel.onclick=()=>{disclosure.open=false;summary.focus();};form.append(cancel);
     disclosure.addEventListener('toggle',()=>{if(disclosure.open)form.querySelector('input,textarea')?.focus({preventScroll:true});});
   }
-  for(const id of ['filter','personal-filter']){
+  for(const id of ['filter','personal-filter','document-filter']){
     const form=document.getElementById(id);if(!form)continue;form.classList.add('filter-bar');form.setAttribute('aria-label','筛选');form.querySelector('h2')?.remove();
     if(id==='filter'){
       const advanced=document.createElement('details');advanced.className='advanced-filters';advanced.innerHTML='<summary>更多筛选</summary><div></div>';
@@ -1204,34 +1251,36 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
     button("next", async () => {
       const q = new URLSearchParams(params); q.set("offset", offset + 25); location.hash = `project/${p}?` + q;
     });
-    bind("newTask", async (r) => {
-      const task = await api(`/projects/${p}/tasks`, "POST", {
-        ...r,
-        dueDate: r.dueDate || null,
-        ...(maintainer ? { assigneeId: r.assigneeId || null, priority: Number(r.priority) } : { status: "TRIAGE" }),
-      });
-      navigate(`task/${p}/${task.id}`, task.triageRequired ? "已提交，等待分诊" : "任务已创建");
-    });
+    bindCreation("newTask", `/projects/${p}/tasks`, r => ({
+      ...r, dueDate: r.dueDate || null,
+      ...(maintainer ? { assigneeId: r.assigneeId || null, priority: Number(r.priority) } : { status: "TRIAGE" }),
+    }), task => navigate(`task/${p}/${task.id}`, task.triageRequired ? "已提交，等待分诊" : "任务已创建"));
     await load();
   }
   if (tab === "documents") {
-    const docs = await api(`/projects/${p}/documents`);
-    panel.innerHTML =
-      table(
-        ["文档", "分类"],
-        docs.map((d) => [link(`document/${p}/${d.id}`, d.title), esc(label(d.kind))]),
-      ) +
-      form(
-        "document",
-        "新建项目文档",
-        input("title", "标题") +
-          '<label>正文<textarea name="body" required></textarea></label>',
-        "创建文档",
-      );
-    bind("document", async (r) => {
-      const d = await api(`/projects/${p}/documents`, "POST", r);
-      navigate(`document/${p}/${d.id}`, "文档已创建");
-    });
+    const query = params.get("q") || "", initialCursor = params.get("cursor") || "";
+    let cursor = initialCursor, shown = 0;
+    panel.innerHTML = form("document-filter", "查找文档", input("q", "搜索标题或正文", "search", query, false), "搜索") +
+      (initialCursor ? link(`project/${p}/documents?${new URLSearchParams({q:query})}`, "返回文档列表开头") : "") +
+      '<div id="document-items" aria-live="polite"></div><div class="pagination"><button id="document-more" class="secondary" hidden>加载更多文档</button><p id="document-count" class="muted" role="status"></p></div>' +
+      form("document", "新建项目文档", input("title", "标题") + '<label>正文<textarea name="body" required></textarea></label>', "创建文档");
+    $("#document-filter [name=q]").maxLength = 200;
+    bind("document-filter", r => {location.hash = `project/${p}/documents?${new URLSearchParams({q:r.q})}`;});
+    async function loadDocuments() {
+      const start = cursor, q = new URLSearchParams({q:query,limit:51});if (start) q.set("cursor", start);
+      const page = await api(`/projects/${p}/documents?${q}`);if (!panel.isConnected) return;
+      const docs = page.slice(0, 50);
+      const from = `project/${p}/documents?${new URLSearchParams({q:query,...(start ? {cursor:start} : {})})}`;
+      if (docs.length) {
+        $("#document-items").insertAdjacentHTML("beforeend", table(["文档", "分类"], docs.map(d => [link(`document/${p}/${d.id}?${new URLSearchParams({from})}`, d.title), esc(label(d.kind))])));
+        shown += docs.length;cursor = contentCursor(docs.at(-1));
+      } else if (!shown) $("#document-items").innerHTML = '<p class="empty">没有匹配的文档。</p>';
+      $("#document-more").hidden = page.length <= 50;
+      $("#document-count").textContent = `已显示 ${shown} 篇文档`;
+    }
+    button("document-more", loadDocuments);
+    bindCreation("document", `/projects/${p}/documents`, r => r, d => navigate(`document/${p}/${d.id}`, "文档已创建"));
+    await loadDocuments();
   }
   if (tab === "imports") {
     const rows = await api(`/projects/${p}/imports`);
@@ -1446,7 +1495,16 @@ async function taskPage(p, t) {
   const requests = d.reassignmentRequests || [];
   const pendingRequest = requests.find(r => r.status === "PENDING");
   const base = `/projects/${p}/tasks/${t}`, headers = { "If-Match": `"${task.revision}"` };
-  const availableDocs = await api(`/projects/${p}/documents?limit=100`);
+  const sourceParams = new URLSearchParams(location.hash.split("?")[1] || "");
+  const focusedComment = sourceParams.get("comment");
+  let focusUnavailable = false;
+  if (focusedComment && /^[0-9a-f-]{36}$/.test(focusedComment)) {
+    try {
+      const page = await api(base + "/comments?" + new URLSearchParams({order:"DESC",focus:focusedComment,limit:51}));
+      d.comments = page.slice(0, 50).reverse();d.commentsHasMore = page.length > 50;
+    } catch (error) { if (error.status !== 404) throw error;focusUnavailable = true; }
+  }
+  const linkedDocs = d.links.documentDetails || [];
   const memberName = id => {
     if (!id) return "未分配";
     const member = d.members.find(m => m.id === id);
@@ -1454,6 +1512,10 @@ async function taskPage(p, t) {
   };
   const priorityNames = ["P0 · 最高", "P1 · 高", "P2 · 普通", "P3 · 低"];
   const dependencyState = task.dependencyRisk ? "已完成，但上游仍未完成" : task.isBlocked ? "等待上游任务" : "无阻塞";
+  function commentHtml(c) {
+    return `<article class="task-comment" id="comment-${c.id}" tabindex="-1"><div class="comment-meta"><strong>${esc(memberName(c.authorId))}</strong><time>${esc(timeLabel(c.createdAt))}</time></div><p class="comment-body">${esc(c.body)}</p>${!archived && c.authorId === me.userId ? '<details><summary>我的评论操作</summary>' + form("edit-comment-" + c.id, "编辑评论", '<label>评论内容<textarea name="body" required>' + esc(c.body) + '</textarea></label>') + (!maintainer ? `<button class="secondary" data-delete="${c.id}">删除我的评论</button>` : '') + '</details>' : ""}${!archived && maintainer ? `<div data-moderation hidden><button class="danger" data-delete="${c.id}">删除这条评论</button></div>` : ""}</article>`;
+  }
+  const latestParams = new URLSearchParams(sourceParams);for (const key of ["comment", "start", "end"]) latestParams.delete(key);
   app.innerHTML = crumbs("任务详情") + personalReturn() +
     `<div class="task-heading"><div><h1>${esc(task.title)}</h1><p class="task-badges"><span class="badge">${esc(stateName(task.status))}</span><span class="badge">${esc(dependencyState)}</span><span>${task.origin === "GITHUB" ? "来自 GitHub" : "本地任务"}</span></p></div><div class="task-heading-actions">${link(`project/${p}/agent?${new URLSearchParams({question:`任务「${task.title}」（ID：${task.id}）当前进展如何？有哪些上游阻塞和讨论依据？`})}`, "询问助手")}${canManage && task.status === "TRIAGE" ? '<button id="review-task" aria-expanded="false" aria-controls="triage-review">分诊与接纳</button>' : ""}${canEdit ? '<button id="edit-task" class="secondary" aria-expanded="false" aria-controls="task-editor">编辑任务</button>' : ""}</div></div>` +
     '<nav class="detail-jumps" aria-label="任务内容"><button data-scroll="task">任务信息</button><button data-scroll="upstream">依赖</button><button data-scroll="links">文档与链接</button><button data-scroll="comments">评论</button>' + (d.sync ? '<button data-scroll="github-status">GitHub 确认状态</button>' : '') + '</nav>' +
@@ -1463,9 +1525,9 @@ async function taskPage(p, t) {
         select("priority", "正式优先级", priorityNames.map((name, i) => [i, name]), task.priority) + input("dueDate", "正式截止日期", "date", task.dueDate || "", false), "接纳为待办") +
       (task.origin === "GITHUB" ? '<p>正式取消 GitHub 任务请使用下方远端修改入口。</p>' : '<button id="reject-task" class="danger">拒绝申请</button>') + '</details>' : preparing ? '<button id="withdraw-task" class="secondary">撤回申请</button>' : "") : "") +
     '<section id="comments"><div class="section-heading"><h2>评论与讨论</h2>' + (!archived && maintainer ? '<button id="manage-comments" class="secondary" aria-expanded="false" aria-controls="comment-moderation">管理评论</button>' : '') + '</div><p id="comment-moderation" class="scope-note" hidden>评论管理已开启。删除后正文不再显示，操作会留下活动记录。</p>' +
-    (d.comments.length ? d.comments.map(c =>
-      `<article class="task-comment" id="comment-${c.id}" tabindex="-1"><div class="comment-meta"><strong>${esc(memberName(c.authorId))}</strong><time>${esc(timeLabel(c.createdAt))}</time></div><p class="comment-body">${esc(c.body)}</p>${!archived && c.authorId === me.userId ? '<details><summary>我的评论操作</summary>' + form("comment-" + c.id, "编辑评论", '<label>评论内容<textarea name="body" required>' + esc(c.body) + '</textarea></label>') + (!maintainer ? `<button class="secondary" data-delete="${c.id}">删除我的评论</button>` : '') + '</details>' : ""}${!archived && maintainer ? `<div data-moderation hidden><button class="danger" data-delete="${c.id}">删除这条评论</button></div>` : ""}</article>`
-    ).join("") : '<p class="muted">暂无评论</p>') +
+    (focusedComment ? `<p class="scope-note">${focusUnavailable ? "这条评论已删除或不可访问，当前显示最新评论。" : "正在查看选中评论及之前的讨论。"}${link(`task/${p}/${t}?${latestParams}`, "返回最新评论")}</p>` : '') +
+    `<div class="pagination"><button id="comments-older" class="secondary" ${d.commentsHasMore ? '' : 'hidden'}>加载较早评论</button><span id="comments-count" class="muted" role="status"></span></div>` +
+    '<div id="comment-items">' + (d.comments.length ? d.comments.map(commentHtml).join("") : '<p class="muted">暂无评论</p>') + '</div>' +
     (!archived ? form("comment", "发表评论", '<label>评论内容<textarea name="body" required placeholder="讨论进展、提出问题。输入 @ 选择项目成员"></textarea></label>', "发布评论") : '<p class="muted">项目已归档，评论保留供查阅。</p>') +
     (d.subscribed ? '<p class="subscription-state">已订阅评论更新 <button id="unsubscribe" class="secondary">退订</button></p>' : '<p class="subscription-state">未订阅评论更新 <button id="subscribe" class="secondary">订阅</button></p>') + '</section>' +
     '<section id="upstream"><h2>上游依赖</h2>' +
@@ -1476,11 +1538,11 @@ async function taskPage(p, t) {
     '<section id="downstream"><h2>下游工作</h2>' +
     taskRows(d.downstream, d.members, "无下游任务") + '</section>' +
     '<section id="links"><h2>文档与链接</h2>' +
-    table(["文档"], (d.links.documents || []).map(id => [link(`document/${p}/${id}?from=${encodeURIComponent(location.hash.slice(1))}`, availableDocs.find(doc => doc.id === id)?.title || "项目文档")]), "尚未关联文档。") +
-    table(["网页"], (d.links.resources || []).map(x => [/^https?:\/\//i.test(x.url) ? `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>` : esc(x.url)]), "尚未关联网页。") +
+    table(canEdit ? ["文档", "操作"] : ["文档"], (d.links.documents || []).map(id => [link(`document/${p}/${id}?from=${encodeURIComponent(location.hash.slice(1))}`, linkedDocs.find(doc => doc.id === id)?.title || "项目文档"), ...(canEdit ? [`<button class="secondary" data-unlink-document="${id}">解除关联</button>`] : [])]), "尚未关联文档。") +
+    table(canEdit ? ["网页", "操作"] : ["网页"], (d.links.resources || []).map(x => [/^https?:\/\//i.test(x.url) ? `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.url)}</a>` : esc(x.url), ...(canEdit ? [`<button class="secondary" data-unlink-resource="${x.id}">解除关联</button>`] : [])]), "尚未关联网页。") +
     (canEdit ? '<details id="link-editor"><summary>关联文档或网页</summary>' +
       form("url", "关联网页", input("url", "HTTP(S) 地址", "url"), "关联") +
-      (availableDocs.length ? form("linkDocument", "关联已有文档", select("id", "选择已有文档", availableDocs.map(x => [x.id, x.title])), "关联") : '<p>还没有项目文档。' + link(`project/${p}/documents`, "先创建文档") + '</p>') + '</details>' : '') + '</section>' +
+      form("linkDocument", "关联已有文档", '<div class="suggestion-field"><label>搜索项目文档<input name="q" type="search" maxlength="200" autocomplete="off" placeholder="输入文档标题或关键词"></label><div id="document-options" class="suggestions" hidden></div></div><input type="hidden" name="id"><p id="selected-document" class="muted" role="status">尚未选择文档。</p>', "关联") + '</details>' : '') + '</section>' +
     '<details class="task-activity"><summary>活动记录</summary>' + table(["变化", "时间"], d.activities.map(a => [esc(label(a.kind)), esc(timeLabel(a.createdAt))])) + '</details>';
 
   if (maintainer) {
@@ -1559,15 +1621,47 @@ async function taskPage(p, t) {
     $("#comment-moderation").hidden = !managing;
     $("#comments").querySelectorAll("[data-moderation]").forEach(el => el.hidden = !managing);
   });
-  $("#comments").querySelectorAll("textarea[name=body]").forEach((field, i) => attachMentions(field, d.members, "mention-options-" + i));
+  async function showComment(id, text) {
+    const q = new URLSearchParams(sourceParams);q.delete("start");q.delete("end");
+    if (id) q.set("comment", id);else q.delete("comment");
+    history.replaceState(null, "", `#task/${p}/${t}?${q}`);await route();message(text);
+    if (id) document.getElementById("comment-" + id)?.scrollIntoView({block:"center"});
+  }
+  function bindComments(comments) {
+    for (const c of comments) {
+      bind("edit-comment-" + c.id, async r => {
+        await api(base + "/comments/" + c.id, "PUT", r, {"If-Match": `"${c.revision}"`});
+        await showComment(c.id, "评论已更新。");
+      });
+      const article = document.getElementById("comment-" + c.id);
+      const textarea = article.querySelector("textarea");if (textarea) attachMentions(textarea, d.members, "mention-options-" + c.id);
+      const remove = article.querySelector("[data-delete]");if (remove) remove.onclick = () => {
+        if (remove.disabled || !confirm("删除这条评论？正文将不再显示。")) return;
+        remove.disabled = true;
+        run(async () => {await api(base + "/comments/" + c.id, "DELETE", undefined, {"If-Match": `"${c.revision}"`});await showComment(null, "评论已删除。");})
+          .finally(() => {if (remove.isConnected) remove.disabled = false;});
+      };
+      if ($("#manage-comments")?.getAttribute("aria-expanded") === "true") article.querySelectorAll("[data-moderation]").forEach(el => el.hidden = false);
+    }
+    $("#comments-count").textContent = `已显示 ${d.comments.length} 条评论`;
+  }
+  bindComments(d.comments);
+  if ($("#comment textarea")) attachMentions($("#comment textarea"), d.members, "mention-options-new");
+  const commentItems = $("#comment-items"), olderComments = $("#comments-older");
+  button("comments-older", async () => {
+    const cursor = contentCursor(d.comments[0], "createdAt");
+    const page = await api(base + "/comments?" + new URLSearchParams({order:"DESC",cursor,limit:51}));
+    if (!commentItems.isConnected) return;
+    const older = page.slice(0, 50).filter(c => !d.comments.some(old => old.id === c.id)).reverse();
+    d.comments = [...older, ...d.comments];
+    commentItems.insertAdjacentHTML("afterbegin", older.map(commentHtml).join(""));bindComments(older);
+    olderComments.hidden = page.length <= 50;
+  });
   if (canManage && task.status === "TRIAGE") $("#triage [name=assigneeId]").required = true;
   bind("triage", r => mutation(base + "/triage-accept", "POST", { assigneeId: r.assigneeId, priority: Number(r.priority), dueDate: r.dueDate || null }, headers));
   button("withdraw-task", () => { if (confirm("撤回后申请保留供查看，需要维护者重新开启才能继续完善。确定撤回？")) return mutation(base, "PATCH", { status: "CANCELED" }, headers); });
   button("reject-task", () => { if (confirm("拒绝后申请保留供查看，不会进入执行流程。确定拒绝？")) return mutation(base, "PATCH", { status: "CANCELED" }, headers); });
-  bind("comment", r => mutation(base + "/comments", "POST", r));
-  for (const c of d.comments)
-    bind("comment-" + c.id, r => mutation(base + "/comments/" + c.id, "PUT", r, { "If-Match": `"${c.revision}"` }));
-  document.querySelectorAll("[data-delete]").forEach(el => el.onclick = () => run(() => mutation(base + "/comments/" + el.dataset.delete, "DELETE", undefined, { "If-Match": `"${d.comments.find(c => c.id === el.dataset.delete).revision}"` })));
+  bindCreation("comment", base + "/comments", r => r, c => showComment(c.id, "评论已发布。"));
   button("subscribe", () => mutation(base + "/subscription", "PUT", { active: true }));
   button("unsubscribe", () => mutation(base + "/subscription", "PUT", { active: false }));
   document.querySelectorAll("[data-scroll]").forEach(el => el.onclick = () => $("#" + el.dataset.scroll)?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -1647,7 +1741,36 @@ async function taskPage(p, t) {
     });
   }
   bind("url", r => mutation(base + "/url-links", "PUT", r, headers));
-  bind("linkDocument", r => mutation(base + "/documents/" + r.id, "PUT", undefined, headers));
+  bind("linkDocument", r => {
+    if (!r.id) throw new Error("请从搜索建议中选择文档");
+    return mutation(base + "/documents/" + r.id, "PUT", undefined, headers);
+  });
+  for (const [attribute, endpoint] of [["document", "documents"], ["resource", "url-links"]]) {
+    document.querySelectorAll(`[data-unlink-${attribute}]`).forEach(el => el.onclick = () => {
+      if (el.disabled || !confirm("解除此项关联？原资料仍然保留。")) return;
+      el.disabled = true;
+      run(() => mutation(base + "/" + endpoint + "/" + el.getAttribute("data-unlink-" + attribute), "DELETE", undefined, headers)).finally(() => {if (el.isConnected) el.disabled = false;});
+    });
+  }
+  if (canEdit) {
+    const field = $("#linkDocument [name=q]"), area = $("#document-options"), selected = $("#linkDocument [name=id]"), submit = $("#linkDocument > button");
+    let sequence = 0, timer;submit.disabled = true;
+    const picker = suggestionPicker(field, area, doc => {
+      clearTimeout(timer);sequence++;selected.value = doc.id;field.value = doc.text;
+      $("#selected-document").textContent = "已选择：" + doc.text;submit.disabled = false;field.focus();picker.close();
+    });
+    async function searchDocuments() {
+      const version = ++sequence;picker.show([], "正在查找…");
+      try {
+        const docs = await api(`/projects/${p}/documents?` + new URLSearchParams({q:field.value.trim(),limit:21}));
+        if (!field.isConnected || version !== sequence || document.activeElement !== field) return;
+        picker.show(docs.slice(0,20).filter(doc => !d.links.documents.includes(doc.id)).map(doc => ({id:doc.id,text:doc.title,detail:"项目文档"})), "没有可关联的匹配文档，请更换关键词或先创建文档。", docs.length > 20 ? "结果较多，请输入更具体的标题。" : "↑↓选择，Enter 确认，Esc 收起。");
+      } catch (error) {if (field.isConnected && version === sequence) {picker.show([], "查找失败，请重新输入或再次聚焦重试。");message(error.message, true);}}
+    }
+    field.addEventListener("focus", () => {if (!selected.value) void searchDocuments();});
+    field.addEventListener("input", () => {clearTimeout(timer);sequence++;selected.value="";submit.disabled=true;$("#selected-document").textContent="尚未选择文档。";timer=setTimeout(searchDocuments,250);});
+    field.addEventListener("keydown", e => {if (e.key === "Enter" && !e.isComposing) {e.preventDefault();clearTimeout(timer);void searchDocuments();}if(e.key === "Escape"){clearTimeout(timer);sequence++;}});
+  }
   if (d.sync) {
     $("#comments").insertAdjacentHTML("beforebegin", `<section id="github-status"><h2>GitHub 确认状态</h2><p>${esc(label(d.sync.status))} · ${esc(d.sync.intent ? label(d.sync.intent.state) : "无待处理意图")} · ${esc(reason(d.sync.error || d.sync.intent?.error))}</p><p>最近确认：${esc(timeLabel(d.sync.confirmedAt))}。受理后等待远端确认；结果未知时仅观察。</p><button id="refreshSync" class="secondary">刷新确认状态</button>` +
       (canEdit ? '<details id="github-editor"><summary>请求修改 GitHub 任务</summary>' + form("intent", "请求修改 GitHub（确认后生效）", (canManage ? input("title", "标题", "text", task.title) : "") + '<label>描述<textarea name="body">' + esc(task.description) + '</textarea></label>' + (canManage || !preparing ? select("state", "远端状态", [["open", "打开"], ["completed", "关闭：完成"], ...(canManage ? [["not_planned", "关闭：取消"]] : [])], task.status === "DONE" ? "completed" : task.status === "CANCELED" ? "not_planned" : "open") : '<p class="muted">待分诊阶段仅完善描述，执行状态需在接纳后更新。</p>'), "提交 GitHub 修改请求") + '</details>' : '') +
@@ -1732,7 +1855,7 @@ function stateName(value) {
 
 function focusSource() {
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
-  if(!q.get("from")?.startsWith(`project/${contextProject?.id}/agent`)) return;
+  if(!q.get("from")?.startsWith(`project/${contextProject?.id}/agent`) && !/^[0-9a-f-]{36}$/.test(q.get("comment") || "")) return;
   const comment=q.get("comment");
   const target=q.get("section")==="github-status" ? $("#github-status") : comment && /^[0-9a-f-]{36}$/.test(comment) ? document.getElementById("comment-"+comment) : $("#document-body") || $(".task-description");
   if(!target){message("引用内容未出现在当前页，请核对最新资料或返回助手重新提问。",true);return;}
@@ -1748,6 +1871,7 @@ function personalReturn() {
   );
   if (from && new RegExp(`^project/${contextProject?.id}/agent(?:\\?|$)`).test(from)) return `<p class="source-return">${link(from,"← 返回助手回答")}</p>`;
   if (from && new RegExp(`^task/${contextProject?.id}/[a-f0-9-]{36}(?:\\?|$)`).test(from)) return `<p>${link(from,"← 返回关联任务")}</p>`;
+  if (from && new RegExp(`^project/${contextProject?.id}/documents(?:\\?|$)`).test(from)) return `<p>${link(from,"← 返回文档列表")}</p>`;
   return from && /^(mine|inbox|project\/[a-f0-9-]+(?:\/tasks)?)(\?|$)/.test(from)
     ? `<p>${link(from, from.startsWith("inbox") ? "← 返回通知" : from.startsWith("project/") ? "← 返回项目任务" : "← 返回我的任务")}</p>`
     : "";
@@ -2100,6 +2224,7 @@ async function conversationPage(root, projectId, params) {
   const scrollToMessage=(node,block='nearest')=>{if(!node)return;if(!embedded){node.scrollIntoView({block});return;}const log=root.querySelector('#conversation-messages');log.scrollTo({top:log.scrollTop+node.getBoundingClientRect().top-log.getBoundingClientRect().top,behavior:'instant'});};
   let alive=true, timer=null, selected=params.get('conversation'), current=null, messages=[], nextBefore=null, cursor=null, messageBefore=null;
   const actor=me.userId, projects=await api('/me/projects');
+  const availability=projectId?await api(`/projects/${projectId}/agent/availability`):{enabled:true};
   let filter=projectId||params.get('projectId')||'', archived=params.get('archived')==='true', query=params.get('q')||'';
   const draftKey=id=>`conversation-draft:${actor}:${id||filter||'new'}`;
   const intentKey=id=>`conversation-intent:${actor}:${id}`;
@@ -2116,7 +2241,8 @@ async function conversationPage(root, projectId, params) {
   function syncCompose(){
     if(!alive)return;
     const pending=selected&&sessionStorage.getItem(intentKey(selected));
-    el('#conversation-send').disabled=!!current?.activeTurnId||!!current?.archived||!!pending;
+    el('#conversation-send').disabled=!availability.enabled||!!current?.activeTurnId||!!current?.archived||!!pending;
+    field.disabled=!availability.enabled;
     el('#conversation-confirm').hidden=!pending;
     el('#conversation-cancel').hidden=!current?.activeTurnId;
   }
@@ -2172,6 +2298,7 @@ async function conversationPage(root, projectId, params) {
   }
   async function create(){const p=filter||projects[0]?.id;if(!p){feedback('请先加入一个项目。',true);return;}const c=await api(`/projects/${p}/agent/conversations`,'POST');if(field.value)sessionStorage.setItem(draftKey(c.id),field.value);location.hash=routeFor(c.id,p);}
   async function send(retry=null,confirmPending=false){
+    if(!availability.enabled){feedback('此实例尚未启用项目助手，可查看和管理已保存会话。');return;}
     if(!selected){const p=filter||projects[0]?.id;if(!p){feedback('请先加入项目。',true);return;}current=await api(`/projects/${p}/agent/conversations`,'POST');selected=current.id;remember();history.replaceState(null,'','#'+routeFor(selected,p));}
     let intent=JSON.parse(sessionStorage.getItem(intentKey(selected))||'null');
     if(intent&&!confirmPending){feedback('上次提交回执尚未确认，请点“确认上次发送”；草稿可继续编辑。',true);return;}
@@ -2191,6 +2318,7 @@ async function conversationPage(root, projectId, params) {
   el('#conversation-older').onclick=safe(async()=>{const page=await api(`/agent/conversations/${selected}/messages?limit=20&before=${nextBefore}`);messages=[...page.items,...messages];nextBefore=page.nextBefore;draw();});
   el('#conversation-latest').onclick=safe(async()=>{messageBefore=null;await refresh();if(embedded)el('#conversation-messages').scrollTop=el('#conversation-messages').scrollHeight;else el('#conversation-compose').scrollIntoView({block:'end'});});
   draw();await listing();if(selected){await refresh(true,Number(params.get('turn'))||null);remember();focusTurn();}
+  if(!availability.enabled)feedback('此实例尚未启用项目助手，可查看和管理已保存会话。');
   async function reauthorize(){if(!alive)return;if(selected)try{await api(`/agent/conversations/${selected}`);}catch(e){await refresh(false).catch(()=>{});}timer=setTimeout(reauthorize,4000);}
   timer=setTimeout(reauthorize,4000);
   return {selected:()=>selected,async navigate(next){

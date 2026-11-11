@@ -251,6 +251,7 @@ class ConversationIT {
     UUID c=conversations.create(actor,project).id();String url="/agent/conversations/"+c;
     var owner=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("conv-"+actor.userId());
     var stranger=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("conv-"+other.userId());
+    http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/projects/{p}/agent/availability",project).with(owner)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.enabled").value(true));
     http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
     http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url).with(owner)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
     http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url).with(stranger)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound());
