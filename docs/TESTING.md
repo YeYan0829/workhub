@@ -35,6 +35,8 @@ Linux 上 Chromium 缺少系统库时，`npx playwright install-deps chromium` �
 
 `TriageProposalIT` 的浏览器子进程看门狗默认 90 秒，可用 `-Dworkhub.test.browser-timeout-seconds=240` 扩展整个页面流程的等待。它与模型运行期限及业务断言分开；自动分诊测试本身有 240 秒进程预算。
 
+`GitHubTriageIT` 的事务回滚测试会在隔离库创建临时触发器。测试 MySQL 开启 binary log 时，先检查 `@@GLOBAL.log_bin_trust_function_creators`；使用测试实例管理员临时设为 `1`，执行该组后恢复原值。应用账号不需要获得 `SUPER` 权限。这个配置仅用于专用故障测试实例。
+
 ### RabbitMQ 故障测试
 
 ```bash
@@ -113,3 +115,25 @@ WORKHUB_DOCKER_TEST=true node scripts/verify-docker-ui.cjs check
 `queue` 在 SMTP 暂停时注册另一测试账号，留下使用旧密钥加密的待发邮件；重建应用会启动其 Mailpit 依赖。`check` 使用保存的数据库会话读取原任务与评论，再接收并验证旧待发邮件，检查持久数据、恢复投递和密钥复用。也可在保留卷的情况下先 `down` 再 `up`，重新运行 `check`。测试完成后只停止该专用项目，不操作其他开发服务。
 
 镜像构建不执行 Java 测试；单元和集成测试按上述分组单独运行。容器启动及浏览器流程通过不代表真实模型语义质量，文档与产品展示效果另行验收。
+
+## 内容交互回归
+
+`ContentInteractionIT` 使用 phase3x 专用测试库，验证最新评论与旧接口排序、时间戳相同时的游标、历史评论定位与跨任务隔离、完整关键词文档搜索、关联标题及解除后的资料保留。助手状态接口同时检查项目授权和最小返回字段。
+
+```bash
+scripts/init-phase3x-test-env.sh
+scripts/run.sh -Pcontracts -Dit.test=dev.workhub.phase3x.ContentInteractionIT verify
+```
+
+正式浏览器回归覆盖创建任务回执丢失后的刷新确认、长评论与草稿、历史引用及编辑、101 篇文档的分页和关联、文档和网页的解除关系，以及筛选任务后导航保持选中。先在专用本地 Compose 环境生成合成账号，再运行内容交互检查：
+
+```bash
+npm ci
+npm run browser:install
+WORKHUB_DOCKER_TEST=true node scripts/verify-docker-ui.cjs seed
+WORKHUB_FRONTEND_TEST=true node scripts/verify-frontend-ui.cjs
+```
+
+默认应用地址为 `http://127.0.0.1:18080`，邮件地址为 `http://127.0.0.1:18025`。可用 `APP_URL`、`MAILPIT_URL` 和 `DOCKER_TEST_DIR` 指定专用环境；前端回归通过 `FRONTEND_SEED_DIR` 读取种子输出，`FRONTEND_TEST_DIR` 指定报告目录，默认分别为 `target/docker-test` 和 `target/frontend-test`。脚本只接受本机 HTTP 地址并要求显式测试开关，创建的账号、任务和资料均为合成数据。
+
+种子输出包含测试账号和会话，只保留在忽略目录。已有输出时使用新的种子目录；失败日志和截图另存，不覆盖此前结果。浏览器工程回归使用可控场景，真实模型语义、真实 GitHub 读取和写回分别验收。
