@@ -149,6 +149,12 @@ const pass = name => { checks.push(name); console.log('PASS ' + name); };
     assert.equal((await api(`/projects/${p}/documents/${documents[0].id}`)).body, 'Background 1');
     pass('CONTENT-05 unlink both resource types while retaining the original document');
 
+    await page.goto(base + `/#project/${p}?q=` + encodeURIComponent(taskTitle));
+    await page.waitForFunction(() => !routing);
+    await page.locator('#tasks').getByRole('link', {name: taskTitle, exact: true}).waitFor();
+    assert.equal(await page.locator('#scope-nav a[aria-current="page"]').last().innerText(), '项目任务');
+    pass('TASK-07 filtered task routes keep the task navigation selected');
+
     const duplicates = await page.evaluate(() => { const ids = [...document.querySelectorAll('[id]')].map(n => n.id); return ids.filter((id, i) => ids.indexOf(id) !== i); });
     assert.deepEqual(duplicates, []); assert.deepEqual(errors, []);
     await page.screenshot({ path: path.join(out, 'content.png'), fullPage: true });
