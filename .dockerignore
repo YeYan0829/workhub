@@ -1,0 +1,16 @@
+# Allow only application build inputs; local credentials, reports and old jars stay out.
+**
+!Dockerfile
+!.dockerignore
+!pom.xml
+!.mvn/
+.mvn/**
+!.mvn/jvm.config
+!.mvn/maven.config
+!src/
+src/**
+!src/main/
+!src/main/**
+!docker/
+docker/**
+!docker/Healthcheck.java

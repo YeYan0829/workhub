@@ -20,6 +20,14 @@ flowchart LR
 
 MySQL 保存业务、权限、会话、工作状态和模型费用账本；RabbitMQ 负责运输与缓冲。Elasticsearch 是可重建的检索投影。独立 Redis 仅在开启共享模型准入时协调速率、冷却和熔断，不能代替 MySQL 费用账本。
 
+## 容器运行
+
+[Dockerfile](../Dockerfile) 使用固定摘要的 Maven/Java 17 构建镜像和 Java 17 JRE 运行镜像。构建上下文由 [.dockerignore](../.dockerignore) 限定为应用源码、构建配置和探针源码；本机 JAR、凭据、文档及测试输出不进入构建。镜像以 UID/GID 10001 运行，Java 进程直接接收停止信号。
+
+Compose 的 `app` profile 启动应用与基础中间件；应用等待数据库和 RabbitMQ 健康后启动，Flyway 执行迁移。容器内使用服务名和内部端口连接，外部端口保持 loopback 绑定。默认 `async` profile 保留宿主机开发方式，检索和共享模型准入分别使用额外 profile。
+
+数据库、消息队列和应用密钥使用独立命名卷。RabbitMQ 使用固定 hostname，容器替换后保持相同节点身份与消息存储目录。应用密钥路径为 `/var/lib/workhub/mail.key`，重建应用容器会复用 `app-data`；CSV 源文件及结果存储在数据库。RabbitMQ 健康探针以 rabbitmq 用户运行，避免首次启动时探针生成 root 所有的 cookie；其 CLI 调度线程和探针超时有界配置，启动等待不改变业务执行期限。
+
 ## 模块入口
 
 | 模块 | 责任与主要入口 |
@@ -32,6 +40,15 @@ MySQL 保存业务、权限、会话、工作状态和模型费用账本；Rabbi
 | `knowledge` | 正文版本、索引生成与检索：[SourceObligations](../src/main/java/dev/workhub/knowledge/SourceObligations.java)、[KnowledgeService](../src/main/java/dev/workhub/knowledge/KnowledgeService.java)、[DenseSearch](../src/main/java/dev/workhub/knowledge/DenseSearch.java) |
 | `agent` | 只读调查、提案批准、调用治理与会话：[AgentEngine](../src/main/java/dev/workhub/agent/AgentEngine.java)、[TriageProposals](../src/main/java/dev/workhub/agent/TriageProposals.java)、[ConversationService](../src/main/java/dev/workhub/agent/ConversationService.java) |
 | `importing` | CSV 预检查、逐行提交及恢复：[CsvImports](../src/main/java/dev/workhub/importing/CsvImports.java) |
+
+容器模式下，可用镜像内的 Java 执行部署管理命令，无需宿主机 JDK。以下参数由部署者依据自己的授权仓库填写：
+
+```bash
+docker compose --profile app exec app java \
+  -Dloader.main=dev.workhub.admin.DeploymentAdmin \
+  -cp /opt/workhub/workhub.jar org.springframework.boot.loader.launch.PropertiesLauncher \
+  github-grant <Workspace-UUID> <installation-ID> <repository-ID> <owner/repo>
+```
 
 ## 业务写入与权限
 

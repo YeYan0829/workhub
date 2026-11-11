@@ -25,7 +25,32 @@ WorkHub 面向研发团队，集中管理任务、依赖、项目资料和 GitHu
 
 ## 本地运行
 
-需要 Bash、Python 3、Docker Compose 和 Java 17。已有 JDK 时设置 `JAVA_HOME` 或将 `java` 放到 PATH；Linux x86_64 也可运行 `python3 scripts/bootstrap-jdk.py`，脚本按 [JDK 锁文件](scripts/jdk-lock.json) 下载并校验到 `.tools/jdk`。首次构建需要联网下载 Maven 和依赖。
+### 使用 Docker
+
+需要 Docker Compose 和 Python 3；应用在镜像内编译，不要求本机安装 Java 或 Maven。
+
+```bash
+python3 scripts/init-env.py
+docker compose --profile app up --build -d --wait --wait-timeout 300
+```
+
+1. 打开 <http://127.0.0.1:18080>，注册账号，密码至少 12 字符。
+2. 打开本地邮件收件箱 <http://127.0.0.1:18025>，通过验证链接启用账号。
+3. 登录后创建团队和项目，创建任务、关联上游任务并添加文档与讨论。
+
+`app` 启动 WorkHub、MySQL、RabbitMQ 和 Mailpit。基础协作不需要模型密钥；截图中的演示数据不会写入新数据库。首次构建需联网下载官方镜像与 Maven 依赖。端口仅绑定本机，默认 Cookie 配置适用于本地 HTTP；HTTPS 部署需设置 `SESSION_COOKIE_SECURE=true`。
+
+```bash
+docker compose --profile app logs -f app             # 应用日志
+docker compose --profile app up --build -d --wait     # 源码更新后重新构建并更新容器
+docker compose --profile app down                    # 移除容器，保留命名数据卷
+```
+
+MySQL 保存业务数据与 CSV 文件，`app-data` 保存邮件加密密钥；应一起备份。`down -v` 会删除命名数据卷，仅用于明确要清空数据的环境。`init-env.py` 不覆盖已有 `.env`。更改浏览器访问端口时，同时更新 `APP_PORT` 和 `WORKHUB_PUBLIC_URL`，保证验证邮件中的链接可打开。宿主机端口与容器内部连接地址分别配置，不要将宿主机端口填入容器连接地址。
+
+### 在宿主机运行应用
+
+需要 Bash 和 Java 17。已有 JDK 时设置 `JAVA_HOME` 或将 `java` 放到 PATH；Linux x86_64 也可运行 `python3 scripts/bootstrap-jdk.py`，按 [JDK 锁文件](scripts/jdk-lock.json) 下载到 `.tools/jdk`。
 
 ```bash
 python3 scripts/init-env.py
@@ -34,25 +59,19 @@ scripts/run.sh -DskipTests package
 scripts/run-app.sh
 ```
 
-1. 打开 <http://127.0.0.1:18080>，注册账号，密码至少 12 字符。
-2. 打开本地邮件收件箱 <http://127.0.0.1:18025>，通过验证链接启用账号。
-3. 登录后创建团队和项目，创建任务、关联上游任务并添加文档与讨论。
-
-默认配置启动 MySQL、RabbitMQ 和 Mailpit，并启用后台消息处理以发送验证邮件。基础协作不需要模型密钥；截图中的演示数据不会自动写入新数据库。
-
-应用目前在宿主机运行，Compose 启动中间件。端口仅绑定本机；HTTPS 部署需启用安全 Cookie。`init-env.py` 不覆盖已有 `.env`，配置变更需自行补齐。停止中间件使用 `docker compose down`，命名卷会保留。生成的 `.tools/mail.key` 必须与数据库一起保留，丢失后已有的加密待发邮件无法解密。
+默认 `async` profile 只启动中间件，供宿主机应用使用。同一个数据库不要同时运行两种启动方式。宿主机模式的 `.tools/mail.key` 与容器模式的 `app-data` 各自保存密钥，已有数据库切换运行方式时需要迁移原密钥，不能直接重新生成。
 
 ## 可选接入
 
 | 能力 | 前置条件 |
 |---|---|
-| BM25 检索 | 将 `COMPOSE_PROFILES` 改为 `async,retrieval`，再次启动 Compose，设置 `WORKHUB_RETRIEVAL_ENABLED=true` 并重启应用 |
+| BM25 检索 | 设置 `WORKHUB_RETRIEVAL_ENABLED=true`；容器模式增加 `--profile retrieval`，宿主机模式使用 `async,retrieval` |
 | Dense / Hybrid | 在检索基础上配置独立 Embedding 端点、密钥、模型维度与预算，显式开启 Embedding |
 | 项目问答 / 分诊 | 配置 `WORKHUB_AGENT_*` 与 `WORKHUB_GLM_*`，确认费用授权和预算，再开启助手 |
 | 共享模型准入 | 增加 `model-governance` profile，配置配额 scope、速率和 burst，通过 `scripts/model-admission.py` 显式初始化专用 Redis |
-| GitHub 同步 | 配置 GitHub App，通过 `scripts/admin.sh` 预授权 installation/repository 并开启 `WORKHUB_GITHUB_ENABLED`；远端写回有独立开关 |
+| GitHub 同步 | 配置 GitHub App，通过部署管理命令预授权 installation/repository 并开启 `WORKHUB_GITHUB_ENABLED`；远端写回有独立开关 |
 
-项目自动分诊开关不代替模型费用授权。配置名称与默认值见 [application.yml](src/main/resources/application.yml) 和 [.env.example](.env.example)。
+部署管理的容器命令见[架构说明](docs/ARCHITECTURE.md)。容器模式的 GitHub App 私钥需通过本地 Compose override 只读挂载到容器，并将 `GITHUB_APP_PRIVATE_KEY_FILE` 指向容器内路径；宿主机路径不会自动进入镜像。项目自动分诊开关不代替模型费用授权。配置名称与默认值见 [application.yml](src/main/resources/application.yml) 和 [.env.example](.env.example)。
 
 ## 测试
 

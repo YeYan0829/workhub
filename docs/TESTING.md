@@ -81,6 +81,35 @@ python3 scripts/test-public-tree.py
 
 允许范围是应用与正式测试源码、必要运行脚本、构建配置、README、本文、架构说明和选定的产品截图。新增脚本、文档或构建入口时更新检查器允许清单。工作记录、原始报告、缓存和本地配置不进入公开提交；被忽略但已经跟踪的文件仍会被检查。
 
-检查器同时检查本地 Markdown 文件链接和 Compose 文件挂载依赖。CI 对每次 push 与 pull request 检查 Git 索引；本地 `--staged` 也读取索引中的原始内容，未暂存的修改不能掩盖待提交的问题。该工作流只检查公开范围，不表示 Java 集成测试已经执行。
+检查器同时检查本地 Markdown 文件链接和 Compose 文件挂载依赖。CI 对每次 push 与 pull request 检查 Git 索引；本地 `--staged` 也读取索引中的原始内容，未暂存的修改不能掩盖待提交的问题。通过公开范围检查后，CI 还会从源码构建应用镜像；Java 集成测试仍需按环境分组执行。
 
 分支采用 `main` 加短期功能分支。合入前检查公开范围、运行受影响的测试并完成必要的浏览器验收；展示版本使用 tag。CI 工作流不会自动配置远端分支保护，需要在托管平台另行启用必需检查。
+
+
+## Docker 启动与数据保留
+
+使用独立 Compose 项目和新的数据卷，关闭模型与外部 GitHub 调用。首次从源码构建并启动：
+
+```bash
+python3 scripts/init-env.py
+docker compose -p workhub-docker-test --profile app up --build -d --wait --wait-timeout 300
+npm ci
+npm run browser:install
+WORKHUB_DOCKER_TEST=true node scripts/verify-docker-ui.cjs seed
+```
+
+浏览器会实际注册独立账号，从本地 Mailpit 获取验证邮件，完成验证、登录、团队/项目/任务/评论创建。仅在专用测试环境使用该脚本；默认 URL 对应 `.env.example`，其他端口通过 `APP_URL`、`MAILPIT_URL` 指定。结果与浏览器会话写入 `target/docker-test`，用新的 `DOCKER_TEST_DIR` 开始另一轮。
+
+检查应用容器重建后的数据库、会话和邮件密钥保留：
+
+```bash
+docker compose -p workhub-docker-test --profile app stop mailpit
+WORKHUB_DOCKER_TEST=true node scripts/verify-docker-ui.cjs queue
+docker compose -p workhub-docker-test --profile app stop app
+docker compose -p workhub-docker-test --profile app up -d --wait --wait-timeout 300 --force-recreate app
+WORKHUB_DOCKER_TEST=true node scripts/verify-docker-ui.cjs check
+```
+
+`queue` 在 SMTP 暂停时注册另一测试账号，留下使用旧密钥加密的待发邮件；重建应用会启动其 Mailpit 依赖。`check` 使用保存的数据库会话读取原任务与评论，再接收并验证旧待发邮件，检查持久数据、恢复投递和密钥复用。也可在保留卷的情况下先 `down` 再 `up`，重新运行 `check`。测试完成后只停止该专用项目，不操作其他开发服务。
+
+镜像构建不执行 Java 测试；单元和集成测试按上述分组单独运行。容器启动及浏览器流程通过不代表真实模型语义质量，文档与产品展示效果另行验收。
