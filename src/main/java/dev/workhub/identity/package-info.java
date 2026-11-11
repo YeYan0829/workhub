@@ -1,2 +1,2 @@
-/** Future users, memberships and authorization. No business implementation in Phase 0. */
+/** Current actors, database sessions, project membership and authorization. */
 package dev.workhub.identity;

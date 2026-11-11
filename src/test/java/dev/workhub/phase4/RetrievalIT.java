@@ -73,7 +73,6 @@ class RetrievalIT {
   @Autowired ObjectMapper mapper;
   @Autowired MockMvc http;
   @Autowired FaultIndex index;
-  @Autowired org.springframework.core.env.Environment environment;
   ActorContext actor, member;
   UUID project, workspace;
   Connection connection;
@@ -119,7 +118,6 @@ class RetrievalIT {
     index.afterSearch = null;
     index.searchFailure = false;
     index.failureMode = null;
-    index.evaluation = null;
   }
 
   @AfterEach
@@ -129,7 +127,6 @@ class RetrievalIT {
     index.afterPublish = null;
     index.failureMode = null;
     index.searchFailure = false;
-    index.evaluation = null;
   }
 
   String login(ActorContext a) {
@@ -777,122 +774,6 @@ class RetrievalIT {
             false));
   }
 
-  @Test
-  void publicBugHubSubsetExportsProductionBm25RankingsAndSourceMapping() throws Exception {
-    Path fixture =
-        Path.of(System.getProperty("workhub.eval.fixture", ".tools/phase4-eval/input.json"));
-    org.junit.jupiter.api.Assumptions.assumeTrue(
-        Files.isRegularFile(fixture),
-        "Optional historical evaluation fixture is not bundled; set -Dworkhub.eval.fixture to an existing fixture");
-    String evaluationIndex = "p4-eval-" + UUID.randomUUID();
-    index.evaluation =
-        new ElasticsearchTextIndex(
-            mapper,
-            environment.getProperty("workhub.retrieval.es-url", "http://127.0.0.1:19200"),
-            evaluationIndex);
-    var dataset = mapper.readTree(Files.readString(fixture));
-    Map<UUID, String> mapping = new LinkedHashMap<>();
-    for (var row : dataset.path("corpus")) {
-      var d = task(row.path("title").asText(), row.path("body").asText());
-      mapping.put(source(d.id(), "task_id"), row.path("id").asText());
-    }
-    pump();
-    assertThat(reads.status(actor, project).published()).isEqualTo(dataset.path("corpus").size());
-    List<Map<String, Object>> rankings = new ArrayList<>(), bad = new ArrayList<>();
-    List<Long> latencies = new ArrayList<>();
-    for (var q : dataset.path("queries")) {
-      long started = System.nanoTime();
-      var response =
-          http.perform(
-                  get("/projects/" + project + "/knowledge/search")
-                      .with(user(login(actor)))
-                      .param("q", q.path("text").asText())
-                      .param("limit", "10"))
-              .andExpect(status().isOk())
-              .andReturn();
-      latencies.add((System.nanoTime() - started) / 1_000_000);
-      var result =
-          mapper.readTree(
-              response.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
-      List<String> ids = new ArrayList<>();
-      for (var hit : result.path("results"))
-        ids.add(mapping.get(UUID.fromString(hit.path("sourceId").asText())));
-      String query = q.path("id").asText();
-      rankings.add(
-          Map.of(
-              "queryId",
-              query,
-              "sourceIds",
-              ids,
-              "retrievalComplete",
-              result.path("retrievalComplete").asBoolean()));
-      List<String> expected = new ArrayList<>();
-      for (var id : dataset.path("qrels").path(query)) expected.add(id.asText());
-      if (expected.stream().noneMatch(ids.subList(0, Math.min(5, ids.size()))::contains))
-        bad.add(
-            Map.of(
-                "queryId",
-                query,
-                "expected",
-                expected,
-                "returned",
-                ids,
-                "classification",
-                "gold_not_in_top5",
-                "requiresAnalysis",
-                true));
-    }
-    Path output = Path.of(System.getProperty("phase4.evidence-dir", "target/evidence/phase4"));
-    Files.createDirectories(output);
-    StringBuilder run = new StringBuilder(), gold = new StringBuilder();
-    for (var row : rankings) run.append(mapper.writeValueAsString(row)).append('\n');
-    dataset
-        .path("qrels")
-        .fields()
-        .forEachRemaining(
-            e -> {
-              for (var id : e.getValue())
-                gold.append(
-                        json.write(
-                            Map.of("queryId", e.getKey(), "sourceId", id.asText(), "relevance", 1)))
-                    .append('\n');
-            });
-    Files.writeString(output.resolve("bm25-rankings.jsonl"), run);
-    Files.writeString(output.resolve("bm25-qrels.jsonl"), gold);
-    evidence(
-        "bm25-errors",
-        Map.of(
-            "badCases",
-            bad,
-            "analyzed",
-            false,
-            "note",
-            "Ranking misses retained for Phase 4B; no tuning on this subset"));
-    evidence(
-        "bm25-runtime",
-        Map.of(
-            "fixtureSha256",
-            Inputs.hash(Files.readString(fixture)),
-            "projectId",
-            project,
-            "index",
-            evaluationIndex,
-            "config",
-            1,
-            "strategy",
-            "BM25",
-            "sources",
-            mapping,
-            "queryLatencyMillis",
-            latencies,
-            "modelCalls",
-            0,
-            "transport",
-            "production OutboxPublisher / RabbitMQ / WorkJobConsumer",
-            "http",
-            "production endpoint via MockMvc, not network latency"));
-  }
-
   @TestConfiguration
   static class Faults {
     @Bean
@@ -904,7 +785,6 @@ class RetrievalIT {
 
   static class FaultIndex implements TextIndex {
     final ElasticsearchTextIndex real;
-    ElasticsearchTextIndex evaluation;
     Consumer<List<Document>> beforePublish, afterPublish;
     Runnable afterSearch;
     boolean searchFailure;
@@ -926,7 +806,7 @@ class RetrievalIT {
         real.publish(list);
         return;
       }
-      (evaluation == null ? real : evaluation).publish(docs);
+      real.publish(docs);
       if ("LOST_RESPONSE".equals(failureMode)) {
         failureMode = null;
         throw new WorkFailure(true, "TEST_LOST_RESPONSE");
@@ -936,7 +816,7 @@ class RetrievalIT {
 
     public Candidates search(UUID p, String q, int size) {
       if (searchFailure) throw new WorkFailure(true, "TEST_ES_OUTAGE");
-      var result = (evaluation == null ? real : evaluation).search(p, q, size);
+      var result = real.search(p, q, size);
       if (afterSearch != null) afterSearch.run();
       return result;
     }

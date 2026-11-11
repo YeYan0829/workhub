@@ -1,2 +1,2 @@
-/** Future committed activity and notifications. No business implementation in Phase 0. */
+/** Business activity, subscriptions and permission-filtered notifications. */
 package dev.workhub.activity;

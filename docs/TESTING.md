@@ -24,7 +24,7 @@
 | `phase1` 的并发诊断 | 除 MySQL 外，需要 Docker CLI/socket 读取当前 Compose MySQL 的锁信息 |
 | `phase2/BrokerRestartIT` | 专用故障 RabbitMQ；见下方，必须与普通 phase2 测试分开执行 |
 | `phase3` / `phase3x` | 对应隔离库和 vhost；GitHub 用本地 HTTP 替身，账号邮件使用测试设施 |
-| `phase4` / `phase4b` / `phase5a` | MySQL、RabbitMQ、Elasticsearch；使用脚本模型/Embedding 替身，不需要付费模型；`RetrievalIT` 的历史数据集实验默认跳过 |
+| `phase4` / `phase4b` / `phase5a` | MySQL、RabbitMQ、Elasticsearch；使用脚本模型/Embedding 替身，不需要付费模型 |
 | `phase5b` / `progress` | 部分方法启动 Node.js 和 Chromium，需要 `npm ci` 与 `npm run browser:install`；普通业务方法使用合成模型 |
 | `governance/SharedBudgetIT` | 已初始化的 `workhub_phase5a_test`；读取 `.env` 中 MySQL 端口与凭据 |
 | `governance/ModelAdmissionIT` | 下方专用 Redis，包含重启与状态丢失测试 |
@@ -66,3 +66,21 @@ W2_REDIS_CONTAINER=workhub-w2-redis MODEL_REDIS_PORT=26379 scripts/run.sh \
 ## 验证边界
 
 合成模型、GitHub HTTP 替身和真实中间件验证业务合同与恢复行为，不代表真实模型语义质量或 GitHub 的全部服务端行为。历史外部评测素材没有导入本仓库；包含凭据的 `.env`、密钥和报告不得提交。构建/测试报告写到 `target/`。
+
+
+## 公开范围与提交检查
+
+```bash
+# 检查工作区中的已跟踪文件与未忽略的新文件
+python3 scripts/check-public-tree.py
+# git add 后检查暂存区的实际文件及内容
+python3 scripts/check-public-tree.py --staged
+# 检查器自身的回归，不需要中间件
+python3 scripts/test-public-tree.py
+```
+
+允许范围是应用与正式测试源码、必要运行脚本、构建配置、README、本文、架构说明和选定的产品截图。新增脚本、文档或构建入口时更新检查器允许清单。工作记录、原始报告、缓存和本地配置不进入公开提交；被忽略但已经跟踪的文件仍会被检查。
+
+检查器同时检查本地 Markdown 文件链接和 Compose 文件挂载依赖。CI 对每次 push 与 pull request 检查 Git 索引；本地 `--staged` 也读取索引中的原始内容，未暂存的修改不能掩盖待提交的问题。该工作流只检查公开范围，不表示 Java 集成测试已经执行。
+
+分支采用 `main` 加短期功能分支。合入前检查公开范围、运行受影响的测试并完成必要的浏览器验收；展示版本使用 tag。CI 工作流不会自动配置远端分支保护，需要在托管平台另行启用必需检查。

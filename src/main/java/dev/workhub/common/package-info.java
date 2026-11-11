@@ -1,2 +1,2 @@
-/** Shared technical primitives, added only when actually used. No business implementation in Phase 0. */
+/** Shared errors, IDs, validation, serialization and idempotency receipts. */
 package dev.workhub.common;

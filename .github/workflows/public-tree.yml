@@ -1,0 +1,19 @@
+name: Public repository scope
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  public-tree:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check tracked public files and links
+        run: python3 scripts/check-public-tree.py --staged
+      - name: Check publication guard regressions
+        run: python3 scripts/test-public-tree.py

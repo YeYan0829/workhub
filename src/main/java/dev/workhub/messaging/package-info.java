@@ -1,2 +1,2 @@
-/** Durable Outbox transport, local WorkJob execution, retry and failure evidence. */
+/** Durable work, transactional outbox, transport and recoverable execution. */
 package dev.workhub.messaging;

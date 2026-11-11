@@ -10,7 +10,6 @@ credentials/
 .idea/
 *.iml
 
-
 # Local runtime, uploads and caches
 node_modules/
 __pycache__/
@@ -29,3 +28,13 @@ logs/
 .cache/
 .playwright/
 .DS_Store
+
+# Private development material and generated reports
+.local/
+.claude/
+.codex/
+.agents/
+evidence/
+archives/
+work-notes/
+reports/
