@@ -146,10 +146,11 @@ public class ConversationService {
     if(r.get("triage_task_id")!=null)throw ApiException.missing();if(r.get("conversation_id")!=null)return get(actor,uuid((byte[])r.get("conversation_id")));
     if(Set.of("QUEUED","RUNNING").contains(r.get("status")))throw new ApiException(409,"LEGACY_RUN_ACTIVE","请在原分析结束后导入会话");
     UUID c=UUID.randomUUID(),t=UUID.randomUUID();String q=(String)r.get("question");
-    db.update("INSERT INTO agent_conversation(id,owner_id,project_id,title,last_seq,history_revision) VALUES (?,?,?,?,1,1)",bytes(c),bytes(actor.userId()),bytes(p),shortTitle(q));
-    db.update("INSERT INTO agent_turn(id,conversation_id,seq,context_head_seq,active_run_id,status,error_code) VALUES (?,?,1,0,?,?,?)",bytes(t),bytes(c),bytes(run),r.get("status"),r.get("error_code"));
-    db.update("INSERT INTO agent_message(id,conversation_id,turn_id,role,body) VALUES (?,?,?,'USER',?)",bytes(UUID.randomUUID()),bytes(c),bytes(t),q);
-    if(r.get("result")!=null)db.update("INSERT INTO agent_message(id,conversation_id,turn_id,role,body) VALUES (?,?,?,'ASSISTANT',?)",bytes(UUID.randomUUID()),bytes(c),bytes(t),r.get("result"));
+    Object askedAt=r.get("created_at"),answeredAt=r.get("completed_at")==null?askedAt:r.get("completed_at");
+    db.update("INSERT INTO agent_conversation(id,owner_id,project_id,title,last_seq,history_revision,created_at,last_activity_at) VALUES (?,?,?,?,1,1,?,?)",bytes(c),bytes(actor.userId()),bytes(p),shortTitle(q),askedAt,answeredAt);
+    db.update("INSERT INTO agent_turn(id,conversation_id,seq,context_head_seq,active_run_id,status,error_code,created_at) VALUES (?,?,1,0,?,?,?,?)",bytes(t),bytes(c),bytes(run),r.get("status"),r.get("error_code"),askedAt);
+    db.update("INSERT INTO agent_message(id,conversation_id,turn_id,role,body,created_at) VALUES (?,?,?,'USER',?,?)",bytes(UUID.randomUUID()),bytes(c),bytes(t),q,askedAt);
+    if(r.get("result")!=null)db.update("INSERT INTO agent_message(id,conversation_id,turn_id,role,body,created_at) VALUES (?,?,?,'ASSISTANT',?,?)",bytes(UUID.randomUUID()),bytes(c),bytes(t),r.get("result"),answeredAt);
     db.update("UPDATE agent_run SET conversation_id=?,turn_id=? WHERE id=?",bytes(c),bytes(t),bytes(run));return get(actor,c);
   }
 }

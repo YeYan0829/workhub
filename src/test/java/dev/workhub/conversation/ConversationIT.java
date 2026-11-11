@@ -114,7 +114,14 @@ class ConversationIT {
     assertThat(conversations.list(actor,project,true,"可检索",null,1).items()).hasSize(1);assertThatThrownBy(()->submit(c,"不能发送")).isInstanceOf(ApiException.class);
     conversations.edit(actor,c,new ConversationService.Edit(null,false,1));
     answer("历史答案");var r=runs.create(actor,project,new AgentRuns.Request("旧独立问题"),UUID.randomUUID().toString());pump();success(r.id());
-    var imported=conversations.migrate(actor,project,r.id());assertThat(conversations.migrate(actor,project,r.id()).id()).isEqualTo(imported.id());assertThat(conversations.messages(actor,imported.id(),null,20).items()).hasSize(1);
+    var original=java.time.Instant.parse("2026-10-16T13:00:00Z");
+    var completed=original.plusSeconds(30);
+    db.update("UPDATE agent_run SET created_at=?,completed_at=? WHERE id=?",Utc.value(original),Utc.value(completed),bytes(r.id()));
+    int calls=db.queryForObject("SELECT COUNT(*) FROM agent_model_call WHERE run_id=?",Integer.class,bytes(r.id()));
+    var imported=conversations.migrate(actor,project,r.id());assertThat(conversations.migrate(actor,project,r.id()).id()).isEqualTo(imported.id());
+    assertThat(conversations.messages(actor,imported.id(),null,20).items()).singleElement().satisfies(turn->assertThat(turn.createdAt()).isEqualTo(original));
+    assertThat(imported.lastActivityAt()).isEqualTo(completed);
+    assertThat(db.queryForObject("SELECT COUNT(*) FROM agent_model_call WHERE run_id=?",Integer.class,bytes(r.id()))).isEqualTo(calls);
   }
   @Test void independentClarificationDoesNotPermitPlaceholderBusinessAnswers(){
     UUID c=conversations.create(actor,project).id();model.script.add(q->text(Map.of("type","NEEDS_CLARIFICATION","question","两个同名任务，指哪一个？","candidates",List.of("第一个","第二个"))));var r=submit(c,"它是谁负责？");pump();success(r.runId());
