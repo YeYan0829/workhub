@@ -139,7 +139,8 @@ class ContentInteractionIT {
         http.perform(get("/projects/{p}/agent/availability", project)).andExpect(status().isForbidden());
         http.perform(get("/projects/{p}/agent/availability", project).with(user(login)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false))
-                .andExpect(jsonPath("$.length()").value(1));
+                .andExpect(jsonPath("$.reason").value("AGENT_DISABLED"))
+                .andExpect(jsonPath("$.length()").value(2));
         http.perform(get("/projects/{p}/agent/availability", UUID.randomUUID()).with(user(login)))
                 .andExpect(status().isForbidden());
     }

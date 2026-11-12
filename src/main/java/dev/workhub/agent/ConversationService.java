@@ -117,7 +117,7 @@ public class ConversationService {
     db.update("DELETE FROM agent_turn_receipt WHERE conversation_id=?",bytes(c));
     db.update("UPDATE agent_turn SET status='CANCELED',error_code='CONVERSATION_DELETED' WHERE conversation_id=?",bytes(c));
     db.update("UPDATE agent_conversation SET cleanup_state='CLEANED' WHERE id=?",bytes(c));
-    return Map.of("cleanupState","CLEANED","backupNotice","在线正文已清理；已有备份按部署保留政策过期，费用骨架保留。");
+    return Map.of("cleanupState","CLEANED","backupNotice","在线正文已清理；调用与用量记录保留，已有备份按部署保留政策过期。");
   }
   @Transactional(isolation=Isolation.REPEATABLE_READ)
   public Messages messages(ActorContext actor,UUID c,Long before,int limit){var row=authorized(actor,c,false);AgentHistory.limit(limit);UUID p=uuid((byte[])row.get("project_id"));

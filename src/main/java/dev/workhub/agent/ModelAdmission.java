@@ -14,11 +14,14 @@ import org.springframework.stereotype.Component;
 
 /** Short Redis operations only. No sleeps, database access, or implicit initialization. */
 @Component
-public class ModelAdmission {
+public class ModelAdmission implements AutoCloseable {
   public record Decision(String reason,long at,long delay,String ticket,long validUntilNanos) {
     public boolean permitted(){return reason.equals("PERMIT");}
     public boolean valid(){return permitted() && System.nanoTime()<validUntilNanos;}
   }
+  public record Quota(String scope,long version,double rate,int burst) {}
+  private String quotaKey(Quota q){return q==null?key:"workhub:model:{"+q.scope()+"}";}
+  private String quotaContract(Quota q){return q==null?contract:"team-v1|"+q.version()+"|"+Double.toString(q.rate())+"|"+q.burst();}
   private final boolean enabled;
   private final String key, contract;
   private final StringRedisTemplate redis;
@@ -32,7 +35,7 @@ public class ModelAdmission {
       @Value("${workhub.model-admission.redis-host:127.0.0.1}") String host,
       @Value("${workhub.model-admission.redis-port:16380}") int port,
       @Value("${workhub.model-admission.redis-password:}") String password) {
-    if(enabled && (!scope.matches("[A-Za-z0-9_.-]{1,100}") || !Double.isFinite(rate) || rate<=0 || rate>10000 || burst<1 || burst>10000))throw new IllegalArgumentException("Invalid model quota contract");
+    if(enabled && (!scope.isEmpty() && !scope.matches("[A-Za-z0-9_.-]{1,100}") || !Double.isFinite(rate) || rate<=0 || rate>10000 || burst<1 || burst>10000))throw new IllegalArgumentException("Invalid model quota contract");
     this.enabled=enabled;this.key="workhub:model:{"+scope+"}";this.contract="v1|"+Double.toString(rate)+"|"+burst;
     script.setLocation(new ClassPathResource("model/admission.lua"));script.setResultType(List.class);
     if(enabled){
@@ -58,19 +61,26 @@ public class ModelAdmission {
     }else{connection=null;redis=null;}
   }
   public boolean enabled(){return enabled;}
-  public Decision acquire(){
+  public Decision acquire(){return acquire(null);}
+  public Decision acquire(Quota quota){
+    if(enabled && quota==null && key.equals("workhub:model:{}"))throw new ApiException(503,"MODEL_ADMISSION_CONFIG","旧模式需要显式配置 quota scope");
     long began=System.nanoTime();String ticket=UUID.randomUUID().toString();
+    if(!enabled && quota!=null)throw new ApiException(503,"MODEL_ADMISSION_DISABLED","团队模型调用需要开启共享 Redis 准入");
     if(!enabled)return new Decision("PERMIT",System.currentTimeMillis(),0,ticket,Long.MAX_VALUE);
-    var result=execute("acquire",ticket,"0","0");
+    var result=execute(quota,"acquire",ticket,"0","0");
     String reason=result.get(0).toString();long at=number(result.get(1)),delay=number(result.get(2));
     if(Set.of("MISSING","CONFIG","RECOVERY_REQUIRED").contains(reason))throw new ApiException(503,"MODEL_ADMISSION_"+reason,"共享模型准入需要运维检查或恢复");
     return new Decision(reason,at,delay,ticket,began+500_000_000L);
   }
   public void outcome(Decision permit,int status,long cooldownMillis){
-    if(enabled)execute("outcome",permit.ticket(),""+status,""+cooldownMillis);
+    outcome(null,permit,status,cooldownMillis);
   }
-  private List execute(String operation,String ticket,String status,String delay){
-    try{return Objects.requireNonNull(redis.execute(script,List.of(key,key+":permit:"+ticket),operation,contract,status,delay));}
+  public void outcome(Quota quota,Decision permit,int status,long cooldownMillis){
+    if(enabled)execute(quota,"outcome",permit.ticket(),""+status,""+cooldownMillis);
+  }
+  private List execute(String operation,String ticket,String status,String delay){return execute(null,operation,ticket,status,delay);}
+  private List execute(Quota quota,String operation,String ticket,String status,String delay){
+    try{return Objects.requireNonNull(redis.execute(script,List.of(quotaKey(quota),quotaKey(quota)+":permit:"+ticket),operation,quotaContract(quota),status,delay));}
     catch(RuntimeException e){
       Throwable cause=e;for(int i=0;i<5 && cause.getCause()!=null;i++)cause=cause.getCause();
       // Safe type only: connection URLs, credentials and raw Redis messages stay private.

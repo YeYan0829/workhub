@@ -8,9 +8,10 @@ import org.springframework.ai.openai.api.OpenAiApi.FunctionTool;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** One physical send: authorize/hold/audit -> encode -> send-time admission -> transport -> settlement. */
+/** One physical send: authorize/register/audit -> encode -> send-time admission -> transport -> usage. */
 @Service
 public class GovernedModelRequests {
+  @org.springframework.beans.factory.annotation.Autowired(required=false) private TeamModels teams;
   private final ModelAdmission admission;
   private final AgentAudit audit;
   private final AgentSettings settings;
@@ -23,40 +24,46 @@ public class GovernedModelRequests {
   public AgentModel.Reply call(UUID run,UUID attempt,AgentModel model,List<Message> messages,List<FunctionTool> definitions,
       long bound,long deadline,Runnable authorize,Runnable onSend,String purpose) {
     if(TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException("Model I/O cannot hold a transaction");
+    if(teams!=null)teams.verifyMode(run);
+    AgentSettings runtime=settings;ModelAdmission.Quota quota=null;
+    if(teams!=null && !teams.legacy()){
+      runtime=teams.runtime(run);model=new GlmChatModel(runtime);
+      quota=new ModelAdmission.Quota(runtime.quotaScope,((Number)teams.verify(run).get("connection_version")).longValue(),runtime.requestRate,runtime.requestBurst);
+    }
     for(int retry=0;;retry++) {
       UUID call=null;long began=System.nanoTime();
       try {
         remaining(deadline);authorize.run();remaining(deadline);
-        // Short transaction only. The monetary hold now covers client preparation and quota waiting.
+        // Register the physical attempt before client preparation and quota waiting.
         call=audit.reserve(run,attempt,bound,AgentSettings.MAX_OUTPUT,purpose);
         audit.trace(run,attempt,"MODEL_INPUT",Map.of("callId",call,"messages",messages,"tools",definitions,"purpose",purpose));
       }catch(RuntimeException e){
         if(call!=null)finishUnsent(call,elapsed(began),"MODEL_NOT_SENT");
         throw e;
       }
-      var send=new SendAdmission(run,attempt,deadline,authorize);
+      var send=new SendAdmission(run,attempt,deadline,authorize,quota);
       AgentModel.Reply reply=null;RuntimeException failure=null;
       try {
         reply=model.call(messages,definitions,remaining(deadline),()->send.ready(onSend));
-        if(reply.inputTokens()<=0 || reply.outputTokens()<0 || reply.inputTokens()>bound
-            || reply.outputTokens()>AgentSettings.MAX_OUTPUT || !settings.model.equals(reply.model()))
+        if(!runtime.model.equals(reply.model()) || runtime.legacyMode && (reply.inputTokens()<=0 || reply.outputTokens()<0 || reply.inputTokens()>bound || reply.outputTokens()>AgentSettings.MAX_OUTPUT))
           throw new ApiException(503,"MODEL_CONTRACT_INVALID","模型身份或用量超出调用合同");
       }catch(RuntimeException e){failure=e;}
-      // Cancellation must not prevent the short, idempotent unsent-release transaction.
+      // Cancellation must not prevent short, idempotent attempt finalization.
       boolean interrupted=Thread.interrupted();
       try {
         if(failure!=null) {
           String code=failure instanceof ApiException a?a.code:"MODEL_RESPONSE_INVALID";
-          if(send.sent && !(failure instanceof AgentModel.UnsentFailure))audit.finish(call,null,null,elapsed(began),code);
+          if(send.sent && failure instanceof ModelHttpFailure)audit.finishHttpFailure(call,elapsed(began),code);
+          else if(send.sent && !(failure instanceof AgentModel.UnsentFailure))audit.finish(call,null,null,elapsed(began),code);
           else audit.finishUnsent(call,elapsed(began),code);
           int status=failure instanceof ModelHttpFailure h?h.httpStatus:0;
           long cooldown=failure instanceof ModelHttpFailure h?h.cooldownMillis:0;
-          if(send.permit!=null)admission.outcome(send.permit,status,cooldown);
+          if(send.permit!=null)admission.outcome(quota,send.permit,status,cooldown);
           audit.trace(run,attempt,"MODEL_FAILURE",Map.of("callId",call,"permitAt",send.permitAt(),"httpStatus",status,"code",code,"cooldownMillis",cooldown));
         }else{
-          // Settle known usage before telemetry or Redis errors can obscure a successful send.
+          // Persist supplier usage before telemetry or Redis errors can obscure a successful send.
           audit.finish(call,reply.inputTokens(),reply.outputTokens(),elapsed(began),null);
-          if(send.permit!=null)admission.outcome(send.permit,200,0);
+          if(send.permit!=null)admission.outcome(quota,send.permit,200,0);
         }
       }finally{
         try{send.finish();}finally{if(interrupted)Thread.currentThread().interrupt();}
@@ -78,10 +85,10 @@ public class GovernedModelRequests {
    * Do not write to MySQL after a permit is granted: even wait refunds and traces can outlive 500ms.
    */
   private final class SendAdmission {
-    final UUID run,attempt;final long deadline;final Runnable authorize;
+    final UUID run,attempt;final long deadline;final Runnable authorize;final ModelAdmission.Quota quota;
     final List<Map<String,Object>> permits=new ArrayList<>(),expired=new ArrayList<>();
     ModelAdmission.Decision permit;long began,grant,end,spent;boolean sent,onSendDone;
-    SendAdmission(UUID run,UUID attempt,long deadline,Runnable authorize){this.run=run;this.attempt=attempt;this.deadline=deadline;this.authorize=authorize;}
+    SendAdmission(UUID run,UUID attempt,long deadline,Runnable authorize,ModelAdmission.Quota quota){this.run=run;this.attempt=attempt;this.deadline=deadline;this.authorize=authorize;this.quota=quota;}
     long permitAt(){return permit==null?0:permit.at();}
     void ready(Runnable onSend){
       remaining(deadline);began=System.nanoTime();
@@ -93,7 +100,7 @@ public class GovernedModelRequests {
           // including after a pause that invalidated a previous permit. No transaction spans wait/I/O.
           check(run,attempt,deadline,authorize);
           if(admission.enabled() && System.nanoTime()>=end)throw new ApiException(503,"MODEL_WAIT_TIMEOUT","单次模型准入等待超时");
-          try{permit=admission.acquire();}catch(ApiException e){audit.trace(run,attempt,"MODEL_ADMISSION_ERROR",Map.of("code",e.code,"elapsedMillis",elapsed(began)));throw e;}
+          try{permit=admission.acquire(quota);}catch(ApiException e){audit.trace(run,attempt,"MODEL_ADMISSION_ERROR",Map.of("code",e.code,"elapsedMillis",elapsed(began)));throw e;}
           if(permit.permitted()) {
             var event=new LinkedHashMap<String,Object>();event.put("permitAt",permit.at());event.put("waitMillis",elapsed(began));event.put("ticket",permit.ticket());event.put("shared",admission.enabled());
             if(admission.enabled())permits.add(event);
@@ -106,7 +113,7 @@ public class GovernedModelRequests {
               }
             }
             // A real scheduling pause can still expire a permit. Do not refund tokens or rebuild the client/body.
-            admission.outcome(permit,0,0);expired.add(Map.of("permitAt",permit.at(),"ticket",permit.ticket()));permit=null;continue;
+            admission.outcome(quota,permit,0,0);expired.add(Map.of("permitAt",permit.at(),"ticket",permit.ticket()));permit=null;continue;
           }
           if(Set.of("OPEN","PROBE_BUSY").contains(permit.reason()))throw new ApiException(503,"MODEL_CIRCUIT_OPEN","模型服务熔断或正在恢复探测，请稍后重试");
           if(!Set.of("RATE","COOLDOWN").contains(permit.reason()))throw new ApiException(503,"MODEL_ADMISSION_INVALID","共享准入返回未知状态");

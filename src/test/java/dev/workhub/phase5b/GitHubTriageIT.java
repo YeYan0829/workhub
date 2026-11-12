@@ -32,7 +32,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Both external services are fixtures; these checks are not model-quality evidence. */
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
   "workhub.messaging.enabled=false","workhub.retrieval.enabled=false","workhub.embedding.enabled=false",
-  "workhub.agent.enabled=true","workhub.bootstrap.login=",
+  "workhub.agent.legacy-mode=true","workhub.agent.enabled=true","workhub.bootstrap.login=",
   "workhub.github.fake-token=fixture","workhub.github.dispatch-enabled=true","workhub.github.webhook-secret=test-secret",
   "workhub.agent.endpoint=http://127.0.0.1:9/api/paas/v4/chat/completions",
   "workhub.agent.api-key=synthetic-no-network","workhub.agent.model=glm-4.7",

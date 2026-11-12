@@ -50,6 +50,8 @@ public class SecurityConfiguration {
                                                 "/",
                                                 "/index.html",
                                                 "/app.js",
+                                                "/model-settings.js",
+                                                "/project-overview.js",
                                                 "/style.css",
                                                 "/sample.csv",
                                                 "/account/register",

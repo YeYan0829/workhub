@@ -291,14 +291,14 @@ public class KnowledgeReads {
     long pending =
         db.queryForObject(
             "SELECT COUNT(*) FROM work_job WHERE project_id=? AND handler IN"
-                + " ('INDEX_TEXT','PUBLISH_TEXT','EMBED_CHUNK','BUILD_VECTOR') AND status IN"
+                + " ('INDEX_TEXT','PUBLISH_TEXT','EMBED_CHUNK','BUILD_VECTOR','TEAM_EMBED_REBUILD','TEAM_EMBED_TEXT','TEAM_EMBED_CHUNK','TEAM_EMBED_PUBLISH') AND status IN"
                 + " ('WAITING','RETRY_WAIT','RUNNING')",
             Long.class,
             bytes(project));
     long failed =
         db.queryForObject(
             "SELECT COUNT(*) FROM work_job WHERE project_id=? AND handler IN"
-                + " ('INDEX_TEXT','PUBLISH_TEXT','EMBED_CHUNK','BUILD_VECTOR') AND status='FAILED'",
+                + " ('INDEX_TEXT','PUBLISH_TEXT','EMBED_CHUNK','BUILD_VECTOR','TEAM_EMBED_REBUILD','TEAM_EMBED_TEXT','TEAM_EMBED_CHUNK','TEAM_EMBED_PUBLISH') AND status='FAILED'",
             Long.class,
             bytes(project));
     return new Status(count, eligible, published, pending, failed, config);

@@ -5,13 +5,13 @@ import static dev.workhub.common.Ids.*;
 import dev.workhub.common.Inputs;
 import dev.workhub.messaging.WorkFailure;
 import java.util.UUID;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 
 @Service
-@ConditionalOnProperty(name = "workhub.embedding.enabled", havingValue = "true")
+@ConditionalOnExpression("${workhub.embedding.enabled:false} && ${workhub.embedding.legacy-mode:false}")
 public class EmbeddingBudget {
   private final JdbcTemplate db;
   private final DenseConfiguration c;

@@ -1,6 +1,8 @@
 package dev.workhub.messaging;
 
 import org.slf4j.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -12,17 +14,39 @@ public class OutboxPublisher {
     private final OutboxRepository outbox;
     private final RabbitPublisher publisher;
     private final RetryPolicy retry;
+    private final int batchSize;
+    private final long batchNanos;
 
     public OutboxPublisher(OutboxRepository outbox, RabbitPublisher publisher, RetryPolicy retry) {
+        this(outbox, publisher, retry, 20, 200);
+    }
+
+    @Autowired
+    public OutboxPublisher(
+            OutboxRepository outbox,
+            RabbitPublisher publisher,
+            RetryPolicy retry,
+            @Value("${workhub.messaging.publish-batch-size:20}") int batchSize,
+            @Value("${workhub.messaging.publish-batch-ms:200}") long batchMillis) {
+        if (batchSize < 1 || batchSize > 100 || batchMillis < 1 || batchMillis > 1000) {
+            throw new IllegalArgumentException("Invalid outbox publish batch limits");
+        }
         this.outbox = outbox;
         this.publisher = publisher;
         this.retry = retry;
+        this.batchSize = batchSize;
+        this.batchNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(batchMillis);
     }
 
     @Scheduled(fixedDelayString = "${workhub.messaging.poll-ms:500}")
     public void tick() {
         try {
-            publishOne();
+            long began = System.nanoTime();
+            for (int sent = 0; sent < batchSize; sent++) {
+                if (!publishOne()) break;
+                // Check between confirmations; an in-flight publish keeps its own timeout.
+                if (System.nanoTime() - began >= batchNanos) break;
+            }
         } catch (Exception e) {
             log.warn("Outbox polling paused: {}", e.getClass().getSimpleName());
         }

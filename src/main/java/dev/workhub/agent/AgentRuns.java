@@ -12,13 +12,18 @@ import org.springframework.transaction.annotation.*;
 
 @Service
 public class AgentRuns {
+  @org.springframework.beans.factory.annotation.Autowired private TeamModels teams;
+  public void available(UUID project){teams.available(project);}
+  public void verify(UUID run){teams.verifyMode(run);if(!teams.legacy())teams.verify(run);}
+  public int maxMillis(UUID run){return teams.legacy()?AgentSettings.MAX_MILLIS:teams.maxMillis(run);}
   private final ProjectAccess access;private final AgentSettings c;private final JdbcTemplate db;
   private final Json json;private final BusinessJobs jobs;private final OperationReceipts receipts;private final AgentTools tools;
   public AgentRuns(ProjectAccess access,AgentSettings c,JdbcTemplate db,Json json,BusinessJobs jobs,OperationReceipts receipts,AgentTools tools){this.access=access;this.c=c;this.db=db;this.json=json;this.jobs=jobs;this.receipts=receipts;this.tools=tools;}
   @Transactional(readOnly=true)
-  public Map<String,Boolean> availability(ActorContext actor,UUID project) {
+  public Map<String,Object> availability(ActorContext actor,UUID project) {
     access.read(actor,project);
-    return Map.of("enabled",c.enabled);
+    try { teams.available(project); return Map.of("enabled",true); }
+    catch(ApiException e) { return Map.of("enabled",false,"reason",e.code); }
   }
   public Map<String,Object> contract(boolean triage) {
     if(!triage)return c.contract();
@@ -88,11 +93,12 @@ public class AgentRuns {
   private void registerAutomatic(UUID requestedBy,dev.workhub.work.Task task,TriageStrategy strategy,long revision,Map<String,Object> trigger) {
     if(db.queryForObject("SELECT EXISTS(SELECT 1 FROM agent_run WHERE automatic_task_id=?)",Boolean.class,bytes(task.id())))return;
     UUID id=UUID.randomUUID();String error=null;
-    try{c.available();}catch(ApiException e){error=e.code;}
+    try{teams.available(task.projectId());}catch(ApiException e){error=e.code;}
     db.update("INSERT INTO agent_run(id,project_id,actor_id,question,model_contract,business_revision,triage_task_id,triage_task_revision,triage_discussion_revision,triage_strategy,automatic_task_id,status,error_code,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         bytes(id),bytes(task.projectId()),bytes(requestedBy),"根据这项待分诊任务的描述、评论和有关资料，整理接纳建议，解释类型和优先级依据，比较相关任务；资料不足时明确说明。",
         json.write(contract(strategy)),revision,bytes(task.id()),task.revision(),task.discussionRevision(),strategy.name(),bytes(task.id()),
         error==null?"QUEUED":"FAILED",error,error==null?null:Utc.value(java.time.Instant.now()));
+    if(error==null)teams.bind(id,task.projectId(),Objects.toString(trigger.get("source")));
     var provenance=new TreeMap<String,Object>(trigger);provenance.put("requestedBy",requestedBy);
     provenance.put("grantedBy",uuid(db.queryForObject("SELECT updated_by FROM project_triage_settings WHERE project_id=?",byte[].class,bytes(task.projectId()))));
     provenance.put("settingsRevision",db.queryForObject("SELECT revision FROM project_triage_settings WHERE project_id=?",Long.class,bytes(task.projectId())));
@@ -101,7 +107,7 @@ public class AgentRuns {
     if(error==null)jobs.enqueue("RUN_AGENT",task.projectId(),id,"agent/"+id,Map.of("runId",id));
   }
   private View createRun(ActorContext actor,UUID project,Request request,String key,UUID task,TriageStrategy strategy) {
-    c.available();var p=access.lockManagement(actor,project);
+    var p=access.lockManagement(actor,project);teams.available(project);
     String question=Inputs.text(request.question(),"question",2000);Inputs.text(key,"Idempotency-Key",128);
     var hash=Inputs.hash(json.write(List.of(task==null?"agent-readonly":"agent-triage/"+task+"/"+Objects.toString(strategy,"legacy"),project,question)));
     UUID old=receipts.find(actor.userId(),key,hash);if(old!=null)return get(actor,project,old);
@@ -115,6 +121,7 @@ public class AgentRuns {
       var t=rows.get(0);
       db.update("UPDATE agent_run SET triage_task_id=?,triage_task_revision=?,triage_discussion_revision=?,triage_strategy=? WHERE id=?",bytes(task),t.get("revision"),t.get("discussion_revision"),strategy==null?null:strategy.name(),bytes(id));
     }
+    teams.bind(id,project,task==null?"MANUAL_QUESTION":"MANUAL_TRIAGE");
     jobs.enqueue("RUN_AGENT",project,id,"agent/"+id,Map.of("runId",id));receipts.save(actor.userId(),key,project,hash,id);
     return new View(id,"QUEUED",null,null,question);
   }

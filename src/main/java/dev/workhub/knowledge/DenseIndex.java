@@ -3,12 +3,12 @@ package dev.workhub.knowledge;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 /** Dedicated model-space index; not a second injectable TEXT adapter. */
 @Component
-@ConditionalOnProperty(name = "workhub.embedding.enabled", havingValue = "true")
+@ConditionalOnExpression("${workhub.embedding.enabled:false} && ${workhub.embedding.legacy-mode:false}")
 public class DenseIndex {
   public final DenseConfiguration config;
   private final ElasticsearchTextIndex rest;

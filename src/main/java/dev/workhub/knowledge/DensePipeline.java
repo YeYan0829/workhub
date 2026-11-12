@@ -4,13 +4,13 @@ import static dev.workhub.common.Ids.*;
 
 import dev.workhub.messaging.*;
 import java.util.*;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /** Called only inside the existing business/source-locked job transaction. */
 @Component
-@ConditionalOnProperty(name = "workhub.embedding.enabled", havingValue = "true")
+@ConditionalOnExpression("${workhub.embedding.enabled:false} && ${workhub.embedding.legacy-mode:false}")
 public class DensePipeline {
   final DenseConfiguration c;
   private final JdbcTemplate db;

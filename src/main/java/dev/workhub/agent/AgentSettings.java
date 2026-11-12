@@ -9,12 +9,13 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class AgentSettings {
+  public boolean legacyMode;
   public final boolean enabled, approved, fixture;
   public final String endpoint, key, model, authorization;
   public final AgentProvider provider;
   @org.springframework.beans.factory.annotation.Value("${workhub.agent.campaign-baseline:-1}") public long campaignBaseline=-1;
   @org.springframework.beans.factory.annotation.Value("${workhub.agent.campaign-limit:0}") public int campaignLimit=0;
-  // Optional per-request spending envelope for a bounded validation campaign.
+  // Per-request input envelope; separate from supplier usage reporting.
   @Value("${workhub.agent.max-request-input-bound:256000}") public int maxRequestInputBound=256000;
   public final long budget, inputPrice, outputPrice;
   @Value("${workhub.model-admission.enabled:false}") public boolean sharedAdmission=false;
@@ -35,29 +36,41 @@ public class AgentSettings {
       @Value("${workhub.agent.budget-usd:0}") BigDecimal budget,
       @Value("${workhub.agent.input-nanousd-per-token:600}") long inputPrice,
       @Value("${workhub.agent.output-nanousd-per-token:2200}") long outputPrice,
-      @Value("${workhub.agent.budget-cny:0}") BigDecimal budgetCny) {
+      @Value("${workhub.agent.budget-cny:0}") BigDecimal budgetCny,
+      @Value("${workhub.agent.legacy-mode:false}") boolean legacyMode) {
+    this.legacyMode=legacyMode;
     this.enabled=enabled; this.approved=approved; this.endpoint=endpoint; this.key=key;
     this.model=model; this.authorization=authorization; this.provider=AgentProvider.forModel(model);
     var uri=URI.create(endpoint);
     fixture=Set.of("localhost","127.0.0.1","::1","[::1]").contains(Objects.toString(uri.getHost(),""));
-    if (enabled && (key.isBlank() || authorization.isBlank() || authorization.length()>100
+    if (enabled && legacyMode && (key.isBlank() || authorization.isBlank() || authorization.length()>100
         || uri.getUserInfo()!=null || uri.getQuery()!=null || uri.getFragment()!=null
         || !(fixture && "http".equals(uri.getScheme()) || endpoint.equals(provider.endpoint))
         || inputPrice<0 || outputPrice<0 || budget.signum()<0 || budgetCny.signum()<0))
       throw new IllegalArgumentException("Invalid provider contract; secrets are never logged");
-    this.budget=(provider.currency.equals("USD")?budget:budgetCny).multiply(BigDecimal.valueOf(1_000_000_000L)).longValueExact();
-    this.inputPrice=fixture?0:Math.max(inputPrice,provider.inputPrice); this.outputPrice=fixture?0:Math.max(outputPrice,provider.outputPrice);
+    this.budget=!legacyMode?0:(!comparison()?budget:budgetCny).multiply(BigDecimal.valueOf(1_000_000_000L)).longValueExact();
+    this.inputPrice=!legacyMode || fixture?0:Math.max(inputPrice,legacyInputPrice()); this.outputPrice=!legacyMode || fixture?0:Math.max(outputPrice,legacyOutputPrice());
+  }
+  public AgentSettings(boolean enabled,boolean approved,String endpoint,String key,String model,String authorization,BigDecimal budget,long inputPrice,long outputPrice,BigDecimal budgetCny) {
+    this(enabled,approved,endpoint,key,model,authorization,budget,inputPrice,outputPrice,budgetCny,true);
   }
   public AgentSettings(boolean enabled,boolean approved,String endpoint,String key,String model,String authorization,BigDecimal budget,long inputPrice,long outputPrice) {
     this(enabled,approved,endpoint,key,model,authorization,budget,inputPrice,outputPrice,budget);
   }
-  public boolean comparison(){return provider.currency.equals("CNY");}
+  /** Generation runtime for team BYOK: monetary settings are not consulted. */
+  public static AgentSettings teamRuntime(String endpoint, String key, String model) {
+    return new AgentSettings(true, false, endpoint, key, model, "", BigDecimal.ZERO, 0, 0, BigDecimal.ZERO, false);
+  }
+  // Frozen compatibility estimates for explicit legacy deployments/tests only.
+  private long legacyInputPrice(){return switch(provider){case GLM->600;case GLM53->1400;case QWEN->2000;case SEED->6000;};}
+  private long legacyOutputPrice(){return switch(provider){case GLM->2200;case GLM53->4400;case QWEN->8000;case SEED->30000;};}
+  public boolean comparison(){return provider==AgentProvider.QWEN || provider==AgentProvider.SEED;}
   public String budgetTable(){return comparison()?"agent_provider_budget":"agent_budget";}
   public String callTable(){return comparison()?"agent_provider_call":"agent_model_call";}
   public String moneyColumn(String prefix){return prefix+(comparison()?"_nano_cny":"_nano_usd");}
   public void available() {
     if (!enabled) throw new ApiException(503,"AGENT_DISABLED","Project Agent 尚未启用");
-    if (!fixture && (!approved || budget==0)) throw new ApiException(503,comparison()?"MODEL_BUDGET_NOT_APPROVED":"GLM_BUDGET_NOT_APPROVED","模型调用预算尚未授权");
+    if (legacyMode && !fixture && (!approved || budget==0)) throw new ApiException(503,comparison()?"MODEL_BUDGET_NOT_APPROVED":"GLM_BUDGET_NOT_APPROVED","模型调用预算尚未授权");
   }
   public Map<String,Object> contract() {
     var contract = new TreeMap<String,Object>(billingContract());

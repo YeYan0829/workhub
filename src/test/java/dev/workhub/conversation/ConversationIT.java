@@ -22,14 +22,18 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:mysql://127.0.0.1:23316/workhub_conversation_test?allowPublicKeyRetrieval=true&sslMode=DISABLED&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true",
-    "spring.datasource.username=conversation","spring.datasource.password=conversation-local-test",
+@SpringBootTest(properties={
     "debug=false","workhub.messaging.enabled=false","workhub.retrieval.enabled=false","workhub.embedding.enabled=false","workhub.github.enabled=false","workhub.bootstrap.login=",
-    "workhub.agent.enabled=true","workhub.agent.endpoint=http://127.0.0.1:23319/chat/completions","workhub.agent.api-key=fixture-only","workhub.agent.model=glm-4.7",
+    "workhub.agent.legacy-mode=true","workhub.agent.enabled=true","workhub.agent.endpoint=http://127.0.0.1:23319/chat/completions","workhub.agent.api-key=fixture-only","workhub.agent.model=glm-4.7",
     "workhub.agent.authorization-id=conversation-it-free-v1","workhub.agent.paid-approved=false","workhub.agent.budget-usd=0","logging.level.root=WARN"})
 @org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 @Import(ConversationIT.Config.class)
 class ConversationIT {
+  @org.springframework.test.context.DynamicPropertySource
+  static void database(org.springframework.test.context.DynamicPropertyRegistry p){
+    p.add("spring.datasource.url",()->System.getenv().getOrDefault("CONVERSATION_JDBC_URL","jdbc:mysql://127.0.0.1:23316/workhub_conversation_test?allowPublicKeyRetrieval=true&sslMode=DISABLED&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"));
+    p.add("spring.datasource.username",()->System.getenv().getOrDefault("CONVERSATION_DB_USER","conversation"));p.add("spring.datasource.password",()->System.getenv().getOrDefault("CONVERSATION_DB_PASSWORD","conversation-local-test"));
+  }
   @TestConfiguration static class Config {@Bean @Primary Script model(){return new Script();}}
   static class Script implements AgentModel {
     Function<List<Message>,Reply> responder;

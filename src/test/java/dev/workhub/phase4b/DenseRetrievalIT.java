@@ -32,6 +32,7 @@ import org.springframework.transaction.PlatformTransactionManager;
       "workhub.messaging.enabled=false",
       "workhub.retrieval.enabled=true",
       "workhub.embedding.enabled=true",
+      "workhub.embedding.legacy-mode=true",
       "workhub.github.enabled=false",
       "workhub.bootstrap.login=",
       "debug=false"

@@ -18,7 +18,7 @@ public class ElasticsearchTextIndex implements TextIndex {
   private final int configId, dimensions;
   private final String identity;
   private final ObjectMapper mapper;
-  private final HttpClient client =
+  private static final HttpClient client =
       HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
 
   @org.springframework.beans.factory.annotation.Autowired

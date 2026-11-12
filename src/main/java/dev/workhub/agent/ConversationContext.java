@@ -67,7 +67,7 @@ public class ConversationContext {
         if(((Number)current.get("last_seq")).longValue()!=scope.head()+1 || !Arrays.equals((byte[])current.get("active_turn_id"),bytes(scope.turn())) || ((Number)current.get("summary_version")).longValue()!=previous)
           throw new ApiException(409,"CONTEXT_SUPERSEDED","整理期间会话已变化，未发布摘要");
         if(tools.historyState(actor,project,deps).equals("UNAVAILABLE"))throw new ApiException(409,"CONTEXT_SOURCE_UNAVAILABLE","历史来源不可访问，未发布摘要");
-        db.update("INSERT INTO agent_context_summary(conversation_id,version,through_seq,previous_version,input_digest,body,dependencies,model,prompt_version,run_id) VALUES (?,?,?,?,?,?,?,?,?,?)",bytes(scope.conversation()),previous+1,end,previous,Inputs.hash(input),summaryBody,json.write(deps),settings.model,"conversation-summary-1",bytes(run));
+        db.update("INSERT INTO agent_context_summary(conversation_id,version,through_seq,previous_version,input_digest,body,dependencies,model,prompt_version,run_id) VALUES (?,?,?,?,?,?,?,?,?,?)",bytes(scope.conversation()),previous+1,end,previous,Inputs.hash(input),summaryBody,json.write(deps),audit.model(run),"conversation-summary-1",bytes(run));
         db.update("UPDATE agent_conversation SET summary_version=summary_version+1 WHERE id=?",bytes(scope.conversation()));
       });
       summary=new Summary(previous+1,end,result,deps);pending.subList(0,prefix.size()).clear();context=render(summary,pending);
@@ -107,7 +107,7 @@ public class ConversationContext {
       每个数组最多20项，项为简短字符串；尽量保留关键原话，不添加未见过的事实。输出总长度须短于输入。
       """).build(),new UserMessage(input));}
   String compact(UUID run,UUID attempt,ActorContext actor,UUID project,AgentModel model,String input,long deadline,Runnable onSend){
-    int count=db.queryForObject("SELECT COUNT(*) FROM "+settings.callTable()+" WHERE run_id=? AND purpose='COMPACTION'",Integer.class,bytes(run));
+    int count=db.queryForObject("SELECT COUNT(*) FROM "+audit.callTable(run)+" WHERE run_id=? AND purpose='COMPACTION'",Integer.class,bytes(run));
     if(count>=Math.max(0,Math.min(4,policy.maxCompactions)))throw new ApiException(503,"COMPACTION_LIMIT","本轮整理次数已用完，原始消息保留");
     var messages=summaryMessages(input);long bound=1024+bound(messages)+bound(List.of());
     if(bound>settings.maxRequestInputBound)throw new ApiException(503,"COMPACTION_INPUT_LIMIT","摘要输入超过容量，未调用模型");

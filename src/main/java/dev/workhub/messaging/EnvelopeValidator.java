@@ -38,7 +38,7 @@ public class EnvelopeValidator {
                         ? "github.work".equals(routingKey)
                         : "RUN_AGENT".equals(job.handler())
                                 ? "agent.read".equals(routingKey)
-                        : "EMBED_CHUNK".equals(job.handler())
+                        : Set.of("EMBED_CHUNK","TEAM_EMBED_CHUNK").contains(job.handler())
                                 ? "knowledge.embedding".equals(routingKey)
                                 : Set.of("MAIL_DELIVERY", "CSV_ROW").contains(job.handler())
                                 ? "business.work".equals(routingKey)

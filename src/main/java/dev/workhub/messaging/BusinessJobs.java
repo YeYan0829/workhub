@@ -50,7 +50,7 @@ public class BusinessJobs {
                 UUID.randomUUID(),
                 id,
                 0,
-                kind.equals("RUN_AGENT") ? "agent.read" : kind.equals("EMBED_CHUNK") ? "knowledge.embedding" : Set.of("INDEX_TEXT", "PUBLISH_TEXT", "BUILD_VECTOR").contains(kind) ? "knowledge.index" : "business.work",
+                kind.equals("RUN_AGENT") ? "agent.read" : Set.of("EMBED_CHUNK", "TEAM_EMBED_CHUNK").contains(kind) ? "knowledge.embedding" : Set.of("INDEX_TEXT", "PUBLISH_TEXT", "BUILD_VECTOR", "TEAM_EMBED_REBUILD", "TEAM_EMBED_TEXT", "TEAM_EMBED_PUBLISH").contains(kind) ? "knowledge.index" : "business.work",
                 kind,
                 json.write(wire),
                 java.time.Instant.now());

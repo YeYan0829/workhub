@@ -28,7 +28,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
   "workhub.messaging.enabled=false","workhub.retrieval.enabled=false","workhub.embedding.enabled=false",
-  "workhub.agent.enabled=true","workhub.github.enabled=false","workhub.bootstrap.login=",
+  "workhub.agent.legacy-mode=true","workhub.agent.enabled=true","workhub.github.enabled=false","workhub.bootstrap.login=",
   "workhub.agent.endpoint=http://127.0.0.1:9/api/paas/v4/chat/completions","workhub.agent.api-key=synthetic-no-network",
   "workhub.agent.model=glm-4.7","workhub.agent.paid-approved=false","workhub.agent.budget-usd=0",
   "server.servlet.session.cookie.secure=false","debug=false","logging.level.root=INFO","logging.level.org.springframework.jdbc=INFO"})

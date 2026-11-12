@@ -41,8 +41,9 @@ public class RunAgentHandler implements RemoteWorkHandler {
       if(Boolean.TRUE.equals(row.get("automatic_stop_requested")))throw new ApiException(503,"AUTOMATIC_TRIAGE_DISABLED","自动分诊已关闭");
       if("QUEUED".equals(row.get("status")) && db.queryForObject("SELECT created_at<=UTC_TIMESTAMP(6)-INTERVAL 600 SECOND FROM agent_run WHERE id=?",Boolean.class,bytes(job.owner())))
         throw new ApiException(503,"AGENT_QUEUE_TIMEOUT","排队超过十分钟，请重新发起分析");
-      c.available();access.read(actor,job.project());
-      if(!json.read((String)row.get("model_contract"),Map.class).equals((row.get("triage_task_id")==null?runs.contract(false):runs.contract(row.get("triage_strategy")==null?null:TriageStrategy.valueOf((String)row.get("triage_strategy"))))))throw new ApiException(503,"GLM_CONTRACT_CHANGED","模型配置已变化，请重新提问");
+      runs.available(job.project());runs.verify(job.owner());access.read(actor,job.project());
+      if(c.legacyMode && !json.read((String)row.get("model_contract"),Map.class).equals((row.get("triage_task_id")==null?runs.contract(false):runs.contract(row.get("triage_strategy")==null?null:TriageStrategy.valueOf((String)row.get("triage_strategy"))))))throw new ApiException(503,"GLM_CONTRACT_CHANGED","模型配置已变化，请重新提问");
+      if(!c.legacyMode && db.queryForObject("SELECT COUNT(*) FROM team_model_usage WHERE run_id=? AND state NOT IN ('COMPLETE','NOT_SENT')",Long.class,bytes(job.owner()))>0)throw new ApiException(503,"MODEL_RESULT_UNKNOWN","旧调用结果未知，停止自动恢复，请重新发起");
       long revision=((Number)row.get("business_revision")).longValue();tools.validate(actor,job.project(),revision,List.of());
       // All admissions hold the project lock. Waiting does not start the model deadline or reserve money.
       if("QUEUED".equals(row.get("status")) && db.queryForObject(
@@ -59,7 +60,7 @@ public class RunAgentHandler implements RemoteWorkHandler {
           db.update("UPDATE agent_run SET triage_task_revision=?,triage_discussion_revision=?,business_revision=? WHERE id=?",
               target.get("revision"),target.get("discussion_revision"),revision,bytes(job.owner()));
         }
-        deadline=java.time.Instant.now().plusMillis(AgentSettings.MAX_MILLIS);
+        deadline=java.time.Instant.now().plusMillis(runs.maxMillis(job.owner()));
         db.update("INSERT INTO agent_trace(run_id,attempt_token,kind,payload) VALUES (?,?,?,?)",bytes(job.owner()),bytes(UUID.randomUUID()),"START",json.write(Map.of("deadlineAt",deadline)));
       } else deadline=java.time.Instant.parse(json.read((String)starts.get(0).get("payload"),Map.class).get("deadlineAt").toString());
       if(!deadline.isAfter(java.time.Instant.now()))throw new ApiException(503,"AGENT_TIMEOUT","累计分析时间预算耗尽");

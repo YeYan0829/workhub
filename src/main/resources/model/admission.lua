@@ -14,11 +14,24 @@ if op == 'initialize' then
   return {'INITIALIZED', now, now+recovery}
 end
 if redis.call('EXISTS', state) == 0 then return {'MISSING', now, 0} end
-if redis.call('HGET', state, 'config') ~= config then return {'CONFIG', now, 0} end
-local generation = redis.call('HGET', state, 'generation')
-local epoch = tonumber(redis.call('HGET', state, 'epoch'))
-local circuit = redis.call('HGET', state, 'circuit')
-local cooldown = tonumber(redis.call('HGET', state, 'cooldown'))
+local stored = redis.call('HGET', state, 'config')
+local version, rate, burst = string.match(config, '^team%-v1|(%d+)|([%d.eE+-]+)|(%d+)$')
+if stored ~= config then
+  local oldVersion = string.match(stored, '^team%-v1|(%d+)|')
+  -- Old in-flight receipts still report cooldown/failure into the same quota domain.
+  if not (op == 'outcome' and version and oldVersion) then
+    if op ~= 'acquire' or not oldVersion or not version or tonumber(version) <= tonumber(oldVersion)
+      or not tonumber(rate) or tonumber(rate) < 0.001 or tonumber(rate) > 10000 or tonumber(burst) < 1 or tonumber(burst) > 10000 then
+      return {'CONFIG', now, 0}
+    end
+    -- Monotonic configuration migration never grants a fresh bucket. Preserve circuit,
+    -- generation, outstanding receipts, recovery horizon and supplier cooldown.
+    redis.call('HSET', state, 'config', config, 'rate', rate, 'burst', burst, 'tokens', 0,
+      'at', math.max(now, tonumber(redis.call('HGET', state, 'at'))))
+  end
+end
+local shared = redis.call('HMGET', state, 'generation', 'epoch', 'circuit', 'cooldown')
+local generation, epoch, circuit, cooldown = shared[1], tonumber(shared[2]), shared[3], tonumber(shared[4])
 local function open()
   epoch = epoch+1
   redis.call('HSET', state, 'circuit', 'OPEN', 'epoch', epoch, 'openUntil', now+30000, 'failures', 0,
@@ -55,8 +68,8 @@ if circuit == 'HALF_OPEN' then
 end
 if circuit == 'OPEN' and now < tonumber(redis.call('HGET', state, 'openUntil')) then return {'OPEN', now, 0} end
 if now < cooldown then return {'COOLDOWN', now, cooldown-now} end
-local rate, burst = tonumber(redis.call('HGET', state, 'rate')), tonumber(redis.call('HGET', state, 'burst'))
-local at, tokens = tonumber(redis.call('HGET', state, 'at')), tonumber(redis.call('HGET', state, 'tokens'))
+local bucket = redis.call('HMGET', state, 'rate', 'burst', 'at', 'tokens')
+local rate, burst, at, tokens = tonumber(bucket[1]), tonumber(bucket[2]), tonumber(bucket[3]), tonumber(bucket[4])
 tokens = math.min(burst, tokens+math.max(0,now-at)*rate/1000)
 if tokens < 1 then
   redis.call('HSET', state, 'tokens', tokens, 'at', math.max(at,now))

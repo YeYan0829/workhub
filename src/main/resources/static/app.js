@@ -364,7 +364,7 @@ async function syncProjectAssistant(params) {
     $('#assistant-backdrop').onclick=()=>setAssistantOpen(false,true);
     $('#assistant-history').onclick=()=>{const open=$('#project-assistant').classList.toggle('history-open');$('#assistant-history').setAttribute('aria-expanded',String(open));};
     const stored=sessionStorage.getItem(assistantKey('open',p));
-    setAssistantOpen(params.get('assistant')==='open'||(stored===null?!matchMedia('(max-width: 1100px)').matches:stored==='true'));
+    setAssistantOpen(params.get('assistant')==='open'||(stored===null?!$('#map-canvas')&&!matchMedia('(max-width: 1100px)').matches:stored==='true'));
   }
   if(!projectAssistant.controller||(requested&&requested!==projectAssistant.controller.selected())){
     const options=new URLSearchParams(params);
@@ -453,20 +453,21 @@ function runContext(id) {
 }
 function progressText(s) {
   const errors = {
-    AGENT_CAMPAIGN_LIMIT:'本轮模型请求次数已用尽。请联系维护者确认额度；已有资料仍可直接查看。',
+    AGENT_CAMPAIGN_LIMIT:'本轮模型请求次数已用尽，可以缩小问题范围后重新分析。',
     AGENT_ROUND_BUDGET:'本次分析已达到调用次数上限，尚未形成可核验的回答。请缩小问题范围后重新分析。',
     AGENT_NO_PROGRESS:'助手连续未完成有效查证，本次已停止。请稍后重试或先直接查看项目资料。',
-    MODEL_COST_BUDGET:'共享模型费用额度不足。请联系维护者核对预算后重新分析。',
-    GLM_COST_BUDGET:'共享模型费用额度不足。请联系维护者核对预算后重新分析。',
+    MODEL_COST_BUDGET:'这条历史分析的执行授权已结束，请使用团队模型重新发起。',
+    GLM_COST_BUDGET:'这条历史分析的执行授权已结束，请使用团队模型重新发起。',
     MODEL_CIRCUIT_OPEN:'模型服务暂时不可用，已暂停调用。请等待恢复后重新分析。',
     GLM_RATE_LIMIT:'供应商触发限流，已共享冷却。请稍后重新分析。',
     MODEL_WAIT_TIMEOUT:'等待模型名额已到上限。请稍后重新分析。',
-    MODEL_WAIT_BUDGET:'本次分析等待额度已用尽。请稍后重新分析。',
+    MODEL_WAIT_BUDGET:'本次分析已达到等待时长上限。请稍后重新分析。',
     MODEL_ADMISSION_UNAVAILABLE:'共享限流服务不可用，已停止调用。请联系维护者恢复服务。',
     MODEL_ADMISSION_MISSING:'限流状态缺失，已停止调用。请联系维护者完成恢复。',
     AGENT_TIMEOUT:'分析已到执行期限。请缩小问题范围后重新分析。',
     FORBIDDEN:'当前访问权限已失效。请返回项目核对权限。',
   };
+  if(modelReason(s.errorCode))return modelReason(s.errorCode);
   if(errors[s.errorCode])return errors[s.errorCode];
   if(s.stage==='DISCONNECTED')return '进度连接暂不可用，正在恢复当前状态；无需重复提交。';
   if(s.status === 'INCOMPLETE')return '证据不足，无法完成分析。请补充问题背景或项目资料后重试。';
@@ -505,6 +506,7 @@ function watchRun(p,id,alive,onProgress,onTerminal,standalone=false) {
 let routing = false,
   routeAgain = false;
 async function route() {
+  overviewDispose?.();
   if (routing) {
     routeAgain = true;
     return;
@@ -591,7 +593,7 @@ async function renderRoute() {
     const workspaceId =
       contextProject?.workspaceId || (page === "workspace" ? a : "");
     $("#scope-nav").innerHTML =
-      `<p class="nav-label">团队</p>${select("workspace-navigation", "", [["", "选择团队…"], ...me.workspaces.map((w) => [w.id, w.name])], workspaceId)}${workspaceId ? `<nav>${navLink("workspace/" + workspaceId, "项目列表", page === "workspace" && (!b || b === "projects"))}${navLink("workspace/" + workspaceId + "/members", "成员与邀请", page === "workspace" && b === "members")}${navLink("workspace/" + workspaceId + "/settings", "团队设置与交接", page === "workspace" && b === "settings")}</nav>` : ""}${contextProject ? `<p class="nav-label">当前项目</p><strong>${esc(contextProject.name)}</strong><nav>${navLink("project/" + a, "项目概览", page === "project" && (b === "overview" || (!b && !search)))}${navLink("project/" + a + "/tasks", "项目任务", page === "task" || b === "tasks" || (page === "project" && !b && !!search))}${navLink("project/" + a + "/github", "GitHub 来源", b === "github")}${navLink("project/" + a + "/documents", "项目文档", page === "document" || b === "documents")}</nav>` : ""}`;
+      `<p class="nav-label">团队</p>${select("workspace-navigation", "", [["", "选择团队…"], ...me.workspaces.map((w) => [w.id, w.name])], workspaceId)}${workspaceId ? `<nav>${navLink("workspace/" + workspaceId, "项目列表", page === "workspace" && (!b || b === "projects"))}${navLink("workspace/" + workspaceId + "/members", "成员与邀请", page === "workspace" && b === "members")}${navLink("workspace/" + workspaceId + "/settings", "团队设置与交接", page === "workspace" && b === "settings")}</nav>` : ""}${contextProject ? `<p class="nav-label">当前项目</p><strong>${esc(contextProject.name)}</strong><nav>${navLink("project/" + a, "项目概览", page === "project" && (b === "overview" || (!b && !search)))}${navLink("project/" + a + "/tasks", "项目任务", page === "task" || b === "tasks" || (page === "project" && !b && !!search))}${navLink("project/" + a + "/github", "GitHub 来源", b === "github")}${navLink("project/" + a + "/documents", "项目文档", page === "document" || b === "documents")}${navLink("project/" + a + "/models", "模型与检索", b === "models")}</nav>` : ""}`;
     $("[name=workspace-navigation]").onchange = (e) => {
       if (e.target.value) location.hash = "workspace/" + e.target.value;
     };
@@ -844,10 +846,15 @@ async function workspacePage(w, tab) {
   ]);
   const role = members.find((m) => m.id === me.userId)?.role,
     admin = role === "ADMIN";
+  if (tab === "models") {
+    app.innerHTML = `<nav class="breadcrumbs">${link("home", "全部团队")} / ${link("workspace/"+w, workspace.name)}</nav><h1>${esc(workspace.name)}</h1><nav class="tabs">${navLink(`workspace/${w}`, "项目", false)}${navLink(`workspace/${w}/settings`, "设置与交接", false)}${navLink(`workspace/${w}/models`, "模型服务", true)}</nav><div id="team-model-panel"></div>`;
+    return teamModelPage($("#team-model-panel"), w, admin);
+  }
   app.innerHTML = `<nav class="breadcrumbs">${link("home", "全部团队")} / ${esc(workspace.name)}</nav><h1>${esc(workspace.name)}</h1><nav class="tabs">${[
     ["projects", "项目"],
     ["members", "成员与邀请"],
     ["settings", "设置与交接"],
+    ...(admin ? [["models", "模型服务"]] : []),
   ]
     .map(([key, label]) => navLink(`workspace/${w}/${key}`, label, tab === key))
     .join("")}</nav><section id="workspace-projects"><h2>我的项目</h2>${table(
@@ -998,8 +1005,8 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
     return;
   }
   const [project, members] = await Promise.all([
-    api("/projects/" + p),
-    api(`/projects/${p}/members`),
+    tab === "overview" && contextProject?.id === p ? Promise.resolve(contextProject) : api("/projects/" + p),
+    tab === "overview" ? Promise.resolve([]) : api(`/projects/${p}/members`),
   ]);
   const maintainer =
     members.find((m) => m.id === me.userId)?.role === "MAINTAINER";
@@ -1011,24 +1018,15 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
     ["imports", "CSV 导入"],
     ["github", "GitHub"],
     ["settings", "项目管理"],
+    ["models", "模型与检索"],
   ]
     .map(([t, n]) => navLink(`project/${p}/${t}`, n, tab === t))
     .join(
       "",
     )}</nav><div id="panel"></div>`;
   const panel = $("#panel");
-  if (tab === "overview") {
-    const [counts, blocked, recent, docs] = await Promise.all([
-      api(`/projects/${p}/summary`), api(`/projects/${p}/task-search?blocked=true&limit=5`),
-      api(`/projects/${p}/task-search?limit=5`), api(`/projects/${p}/documents?limit=5`)
-    ]);
-    panel.innerHTML =
-      `<div class="project-stats">${states.map(state=>`<a href="#project/${p}/tasks?status=${state}"><strong>${counts[state] || 0}</strong><span>${stateName(state)}</span></a>`).join("")}</div>` +
-      `<section><div class="section-heading"><h2>需要关注的阻塞</h2>${link(`project/${p}/tasks?blocked=true`, "查看全部")}</div>${taskRows(blocked.items, members, "当前没有直接被上游阻塞的任务。")}</section>` +
-      `<section><div class="section-heading"><h2>最近更新的任务</h2>${link(`project/${p}/tasks`, "全部任务")}</div>${taskRows(recent.items,members,"还没有任务。进入任务页创建第一项工作，或从 GitHub 接入已有 Issue。")}</section>` +
-      `<section><h2>项目背景与约定</h2>${table(["文档"],docs.map(d=>[link(`document/${p}/${d.id}`,d.title)]),"暂无文档，可在文档页记录项目背景和协作约定。")}${link(`project/${p}/documents`, "查看全部文档")}</section>`;
-    return;
-  }
+  if (tab === "models") return projectModelPage(panel, p, project, maintainer);
+  if (tab === "overview") return projectOverviewPage(panel, p, members, params);
   if (tab === "agent" && !params.get("run")) return conversationPage(panel,p,params);
   if (tab === "agent") {
     panel.innerHTML = form("agent-question", "询问项目情况", `<label>问题<br><textarea name="question" required maxlength="2000" rows="3" placeholder="登录模块当前由谁负责？为什么阻塞发布任务？"></textarea></label>`, "开始分析") + `<p class="scope-note">助手只读取当前项目的任务、依赖、讨论、文档和已同步的 GitHub 资料。回答不会修改任务；点击引用编号可核对依据。</p><div class="question-suggestions"><button type="button" class="secondary" data-question="项目目前有哪些进行中的工作和待处理任务？请注明负责人与依据。">了解项目进展</button><button type="button" class="secondary" data-question="哪些任务被上游依赖阻塞？请列出直接原因和相关任务。">查清阻塞</button><button type="button" class="secondary" data-question="项目有哪些来自 GitHub 的任务？哪些仍待分诊？请给出来源。">查看外部问题</button></div><p id="answered-question" class="scope-note" hidden></p><div id="agent-answer" aria-live="polite"></div>`;
@@ -1042,7 +1040,7 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
     panel.querySelectorAll('[data-question]').forEach(button=>button.onclick=()=>{if(!questionField.disabled){questionField.value=button.dataset.question;questionField.focus();}});
     const labels = {FACT:"当前事实",EVIDENCE:"文本证据",INFERENCE:"推断",UNKNOWN:"尚不能确定"};
     const toolLabels = {read_content:"正文读取",find_documents:"文档查找",list_comments:"任务讨论",read_github_resource:"GitHub 同步原文",get_project_summary:"项目概况",get_task:"任务状态",list_tasks:"任务列表",get_direct_blockers:"直接阻塞",get_dependency_path:"依赖路径",get_linked_resources:"关联资料",get_sync_intent:"同步状态",search_project_evidence:"项目证据检索"};
-    const errors = {AGENT_DISABLED:"此实例尚未启用项目助手。",GLM_BUDGET_NOT_APPROVED:"模型调用尚未配置预算授权。",GLM_COST_BUDGET:"本阶段模型预算已用尽，请联系项目维护者。",AGENT_TIMEOUT:"分析超时，请缩小问题范围后重试。",GLM_TIMEOUT:"模型响应超时，请稍后重新提问。",GLM_RATE_LIMIT:"模型服务限流，请稍后重新提问。",INVALID_AGENT_ANSWER:"模型回答或来源未通过校验，请重试。",AGENT_CONTEXT_CHANGED:"项目在分析期间变化，请重新提问。",KNOWLEDGE_CHANGED:"所用资料已更新或删除，请重新提问。",FORBIDDEN:"当前访问权限已失效。"};
+    const errors = {AGENT_DISABLED:"此实例尚未启用项目助手。",GLM_BUDGET_NOT_APPROVED:"请团队管理员配置文本模型后重新发起分析。",GLM_COST_BUDGET:"这条历史分析已结束，请使用团队模型重新发起。",AGENT_TIMEOUT:"分析超时，请缩小问题范围后重试。",GLM_TIMEOUT:"模型响应超时，请稍后重新提问。",GLM_RATE_LIMIT:"模型服务限流，请稍后重新提问。",INVALID_AGENT_ANSWER:"模型回答或来源未通过校验，请重试。",AGENT_CONTEXT_CHANGED:"项目在分析期间变化，请重新提问。",KNOWLEDGE_CHANGED:"所用资料已更新或删除，请重新提问。",FORBIDDEN:"当前访问权限已失效。"};
     function sourceLink(s) {
       const title=s.kind==="FACT"?(s.data?.id?s.title:toolLabels[s.toolName]||"业务事实来源"):(s.evidence?.title||s.title||(s.evidence?.kind==="COMMENT"?"查看所属任务的讨论":"项目来源"));
       const path=(s.url||"").match(/^\/projects\/([0-9a-f-]{36})\/(tasks|documents)\/([0-9a-f-]{36})(?:\/comments\/[0-9a-f-]{36})?(?:#.*)?$/);
@@ -1143,7 +1141,7 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
       if(!intent){intent={key:crypto.randomUUID(),body:r};sessionStorage.setItem(intentKey,JSON.stringify(intent));syncQaIntent();}
       let value;
       try{value=await api(`/projects/${p}/agent/runs`,"POST",intent.body,{"Idempotency-Key":intent.key});}
-      catch(e){if(e.status>=400&&e.status<500 || ["AGENT_DISABLED","GLM_BUDGET_NOT_APPROVED","MODEL_BUDGET_NOT_APPROVED"].includes(e.code))sessionStorage.removeItem(intentKey);syncQaIntent();$("#agent-answer").textContent=errors[e.code]||readableError(e.message);throw e;}
+      catch(e){if(e.status>=400&&e.status<500 || ["AGENT_DISABLED","GLM_BUDGET_NOT_APPROVED","MODEL_BUDGET_NOT_APPROVED"].includes(e.code))sessionStorage.removeItem(intentKey);syncQaIntent();$("#agent-answer").textContent=modelReason(e.code)||errors[e.code]||readableError(e.message);throw e;}
       sessionStorage.setItem(qaKey,value.id);sessionStorage.removeItem(intentKey);syncQaIntent();
       if(panel.isConnected)await show(value.id);
     });
@@ -1156,12 +1154,12 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
     try { status = await api(`/projects/${p}/knowledge/status`); }
     catch (error) { panel.innerHTML = `<p>此实例尚未启用知识检索。${esc(error.message)}</p>`; return; }
     panel.innerHTML = `<h2>项目知识检索</h2><p>搜索任务、文档与评论。</p><details class="operational-details"><summary>索引状态</summary><p id="index-status">可用 ${status.eligible} · 已索引 ${status.published} · 待处理 ${status.pending} · 失败 ${status.failed}</p></details>` +
-      form("knowledge-search", "搜索项目资料", input("q", "关键词或问题", "text", params.get("q") || ""), "搜索") +
+      form("knowledge-search", "搜索项目资料", input("q", "关键词或问题", "text", params.get("q") || "") + select("strategy", "检索方式", [["BM25","关键词"],["DENSE","语义"],["HYBRID","混合"]], "BM25"), "搜索") +
       `<div id="knowledge-results" aria-live="polite"></div>` +
       (maintainer && !project.archived ? `<h3>资料回填与恢复</h3><p>为存量资料或丢失的索引登记后台重建。资料较多时分批提交，可继续处理下一批。</p><button id="knowledge-rebuild">登记回填 / 重建</button><p id="rebuild-result" role="status"></p>` : "");
     bind("knowledge-search", async r => {
-      const value = await api(`/projects/${p}/knowledge/search?` + new URLSearchParams({q:r.q,limit:10}));
-      $("#knowledge-results").innerHTML = `<p>${value.results.length} 项结果${value.retrievalComplete ? "" : " · 索引尚不完整，结果可能有遗漏"}，过滤失效候选 ${value.droppedStale}。</p>` +
+      const value = await api(`/projects/${p}/knowledge/search?` + new URLSearchParams({q:r.q,limit:10,strategy:r.strategy}));
+      $("#knowledge-results").innerHTML = `<p>${value.results.length} 项结果 · 实际采用${({BM25:"关键词",DENSE:"语义",HYBRID:"混合"})[value.strategy]||"关键词"}检索${value.degradedReason?" · "+esc(modelReason(value.degradedReason)||"语义检索暂时不可用，已采用关键词检索。"):""}${value.retrievalComplete ? "" : " · 索引尚不完整，结果可能有遗漏"}，过滤失效候选 ${value.droppedStale}。</p>` +
         value.results.map(e => {
           const destination = e.kind === "DOCUMENT" ? `document/${p}/${e.ownerId}` : e.canonicalUrl.startsWith(`/projects/${p}/tasks/`) ? `task/${p}/${e.canonicalUrl.split('/')[4]}` : null;
           const source = destination ? link(destination,e.title || "查看任务讨论") : `<a href="${esc(e.canonicalUrl)}" target="_blank" rel="noopener noreferrer">查看来源</a>`;
@@ -1364,7 +1362,7 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
         try {
           const config=await api(`/projects/${p}/agent/triage-settings`);
           if (!auto.isConnected) return;
-          auto.innerHTML='<h2>自动分诊分析</h2><details><summary>触发条件与费用</summary><p>开启后，新建的待分诊任务自动分析，消耗已授权模型额度；首次历史导入不触发。关闭后停止后续调用，已发出的请求仍结算。分析不会自动接纳任务。</p></details>' +
+          auto.innerHTML='<h2>自动分诊分析</h2><details><summary>触发条件与模型调用</summary><p>开启后，新建的待分诊任务使用团队文本模型自动分析；历史导入用于同步任务资料。关闭后停止后续调用，已发送的请求继续记录用量。分析建议由维护者确认接纳。</p></details>' +
             (project.archived ? '<p>项目已归档，恢复后可修改设置。</p>' : form('auto-triage','分析设置',select('enabled','新任务自动分析',[['false','关闭'],['true','开启']],String(config.enabled))+select('strategy','默认分析方式',[['WORKFLOW','固定资料分析'],['GUIDED','固定资料并补充查证'],['AGENT','自主调查']],config.strategy),'保存分析设置'));
           bind('auto-triage',async values=>{await api(`/projects/${p}/agent/triage-settings`,'PUT',{enabled:values.enabled==='true',strategy:values.strategy,expectedRevision:config.revision});await load();message('自动分析设置已保存，仅影响后续新建任务。');});
         } catch(e) {
@@ -1855,6 +1853,12 @@ function stateName(value) {
 
 function focusSource() {
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
+  if (q.get("section") === "comments" && $("#comments")) {
+    $("#comments").setAttribute("tabindex", "-1");
+    $("#comments").focus({preventScroll:true});
+    $("#comments").scrollIntoView({block:"start"});
+    return;
+  }
   if(!q.get("from")?.startsWith(`project/${contextProject?.id}/agent`) && !/^[0-9a-f-]{36}$/.test(q.get("comment") || "")) return;
   const comment=q.get("comment");
   const target=q.get("section")==="github-status" ? $("#github-status") : comment && /^[0-9a-f-]{36}$/.test(comment) ? document.getElementById("comment-"+comment) : $("#document-body") || $(".task-description");
@@ -1869,6 +1873,7 @@ function personalReturn() {
   const from = new URLSearchParams(location.hash.split("?")[1] || "").get(
     "from",
   );
+  if (from && new RegExp(`^project/${contextProject?.id}/overview(?:\\?|$)`).test(from)) return `<p>${link(from,"← 返回项目概览")}</p>`;
   if (from && new RegExp(`^project/${contextProject?.id}/agent(?:\\?|$)`).test(from)) return `<p class="source-return">${link(from,"← 返回助手回答")}</p>`;
   if (from && new RegExp(`^task/${contextProject?.id}/[a-f0-9-]{36}(?:\\?|$)`).test(from)) return `<p>${link(from,"← 返回关联任务")}</p>`;
   if (from && new RegExp(`^project/${contextProject?.id}/documents(?:\\?|$)`).test(from)) return `<p>${link(from,"← 返回文档列表")}</p>`;
@@ -2041,8 +2046,8 @@ async function personalPage(page, params) {
 }
 
 function triageRunLabel(status,code) {
-  const errors={AUTOMATIC_TRIAGE_DISABLED:'自动分诊已关闭，本次分析已停止，可手动重新发起',AGENT_QUEUE_TIMEOUT:'排队超过十分钟，未开始分析，请重新发起',PROJECT_ARCHIVED:'项目已归档，分析已停止',TRIAGE_NO_LONGER_REQUIRED:'任务已不再待分诊，分析已停止',AGENT_DISABLED:'分析服务未启用',GLM_BUDGET_EXHAUSTED:'模型额度不足',MODEL_BUDGET_EXHAUSTED:'模型额度不足',MODEL_COST_BUDGET:'模型额度不足，未发出新的模型请求',GLM_BUDGET_NOT_APPROVED:'模型额度尚未授权',MODEL_BUDGET_NOT_APPROVED:'模型额度尚未授权',AGENT_CONTEXT_CHANGED:'依据已变化，结果已过期',GLM_CONTRACT_CHANGED:'模型配置已变化，请重新分析'};
-  return errors[code] || ({QUEUED:'已排队，等待分析',RUNNING:'正在分析任务与资料',SUCCEEDED:'分析已完成',STALE:'分析已过期',FAILED:'分析失败',INCOMPLETE:'分析未完成'}[status] || status) + (code ? `（${code}）` : '');
+  const errors={AUTOMATIC_TRIAGE_DISABLED:'自动分诊已关闭，本次分析已停止，可手动重新发起',AGENT_QUEUE_TIMEOUT:'排队超过十分钟，未开始分析，请重新发起',PROJECT_ARCHIVED:'项目已归档，分析已停止',TRIAGE_NO_LONGER_REQUIRED:'任务已不再待分诊，分析已停止',AGENT_DISABLED:'分析服务未启用',GLM_BUDGET_EXHAUSTED:'这条历史分析已结束，请重新发起',MODEL_BUDGET_EXHAUSTED:'这条历史分析已结束，请重新发起',MODEL_COST_BUDGET:'历史执行授权已结束，请使用团队模型重新发起',GLM_BUDGET_NOT_APPROVED:'请团队管理员配置文本模型后重新发起',MODEL_BUDGET_NOT_APPROVED:'请团队管理员配置文本模型后重新发起',AGENT_CONTEXT_CHANGED:'依据已变化，结果已过期',GLM_CONTRACT_CHANGED:'模型配置已变化，请重新分析'};
+  return modelReason(code) || errors[code] || ({QUEUED:'已排队，等待分析',RUNNING:'正在分析任务与资料',SUCCEEDED:'分析已完成',STALE:'分析已过期',FAILED:'分析失败',INCOMPLETE:'分析未完成'}[status] || status) + (code ? `（${code}）` : '');
 }
 async function triageProposalPanel(area, p, task, members, writable) {
   const base = `/projects/${p}/agent`, routeHash = location.hash.split("?")[0];
@@ -2229,7 +2234,7 @@ async function conversationPage(root, projectId, params) {
   const draftKey=id=>`conversation-draft:${actor}:${id||filter||'new'}`;
   const intentKey=id=>`conversation-intent:${actor}:${id}`;
   const routeFor=(c,p=filter)=>embedded?assistantRoute(p,c):`project/${p}/agent?${new URLSearchParams({conversation:c})}`;
-  const localError=e=>({CONTEXT_SINGLE_TURN_LIMIT:'一轮历史内容超过整理容量，请新建会话并缩小内容；原文保留。',COMPACTION_INPUT_LIMIT:'待整理内容超过本轮容量，原文保留。',COMPACTION_LIMIT:'本轮对话整理已达到上限，请缩小问题或新建会话。',CONTEXT_SOURCE_UNAVAILABLE:'历史来源已不可访问，请重试以重新整理可用上下文。',CHECKPOINT_SOURCE_CHANGED:'恢复点的来源已变化，请重新分析本轮。',CONVERSATION_CONFLICT:'会话已在另一窗口更新。草稿已保留，请核对新消息后重新发送。',CONVERSATION_BUSY:'当前会话已有回答正在进行，草稿已保留。',CONVERSATION_ARCHIVED:'请先恢复会话再继续。',CONVERSATION_CANCELED:'本轮已停止，可以重试或继续提问。',AGENT_REQUEST_BUDGET:'上下文超过本轮容量，原始聊天记录已保留。请缩小问题或新建会话。',MODEL_RESULT_UNKNOWN:'上次模型请求结果未知，已停止自动重发。可明确重试本轮。',CHECKPOINT_RESPONSE_LOST:'上次响应未形成安全恢复点，本轮已停止。可明确重试。',AGENT_DISABLED:'此实例未启用模型；仍可管理历史会话。',GLM_BUDGET_NOT_APPROVED:'真实模型调用尚未授权。',MODEL_COST_BUDGET:'本轮模型额度不足，原始聊天记录已保留。',AGENT_INTERNAL_ERROR:'本轮分析未完成，可以重试。',COMPACTION_INVALID:'较早对话整理失败，原始记录已保留。'}[e.code||e.errorCode]||readableError(e.message||e.errorCode||'本轮分析未完成，请重试。'));
+  const localError=e=>modelReason(e.code||e.errorCode)||({CONTEXT_SINGLE_TURN_LIMIT:'一轮历史内容超过整理容量，请新建会话并缩小内容；原文保留。',COMPACTION_INPUT_LIMIT:'待整理内容超过本轮容量，原文保留。',COMPACTION_LIMIT:'本轮对话整理已达到上限，请缩小问题或新建会话。',CONTEXT_SOURCE_UNAVAILABLE:'历史来源已不可访问，请重试以重新整理可用上下文。',CHECKPOINT_SOURCE_CHANGED:'恢复点的来源已变化，请重新分析本轮。',CONVERSATION_CONFLICT:'会话已在另一窗口更新。草稿已保留，请核对新消息后重新发送。',CONVERSATION_BUSY:'当前会话已有回答正在进行，草稿已保留。',CONVERSATION_ARCHIVED:'请先恢复会话再继续。',CONVERSATION_CANCELED:'本轮已停止，可以重试或继续提问。',AGENT_REQUEST_BUDGET:'上下文超过本轮容量，原始聊天记录已保留。请缩小问题或新建会话。',MODEL_RESULT_UNKNOWN:'上次模型请求结果未知，已停止自动重发。可明确重试本轮。',CHECKPOINT_RESPONSE_LOST:'上次响应未形成安全恢复点，本轮已停止。可明确重试。',AGENT_DISABLED:'此实例未启用模型；仍可管理历史会话。',GLM_BUDGET_NOT_APPROVED:'请团队管理员配置文本模型后重新发起。',MODEL_COST_BUDGET:'历史分析已结束，聊天记录已保留。可以使用团队模型重新发起。',AGENT_INTERNAL_ERROR:'本轮分析未完成，可以重试。',COMPACTION_INVALID:'较早对话整理失败，原始记录已保留。'}[e.code||e.errorCode]||readableError(e.message||e.errorCode||'本轮分析未完成，请重试。'));
   root.innerHTML=(!projectId?'<h1>会话历史</h1>':'')+`<section class="conversation-app ${!projectId?'history-only':''}"><aside class="conversation-list"><h2>我的会话</h2><form id="conversation-filter"><label>项目<select name="projectId"><option value="">全部项目</option>${projects.map(p=>`<option value="${esc(p.id)}" ${p.id===filter?'selected':''}>${esc(p.name||p.projectName)}</option>`).join('')}</select></label><label>查找标题<input name="q" value="${esc(query)}" maxlength="120" placeholder="会话标题"></label><label class="row"><input type="checkbox" name="archived" ${archived?'checked':''}>已归档</label><button>筛选</button></form><button id="conversation-new">新建会话</button><button id="conversation-import" class="secondary">导入旧问答</button><details><summary>不可访问会话</summary><div id="conversation-unavailable"></div></details><div id="conversation-items" aria-live="polite">正在加载会话…</div><button id="conversation-more" class="secondary" hidden>更多会话</button></aside><section class="conversation-main"><div id="conversation-heading"></div><p id="conversation-feedback" role="status" aria-live="polite"></p><button id="conversation-older" class="secondary" hidden>加载较早消息</button><button id="conversation-latest" class="secondary" hidden>返回最新消息</button><div id="conversation-messages" role="log" aria-label="对话记录"></div><form id="conversation-compose" class="conversation-compose"><label>继续对话<textarea name="text" maxlength="2000" rows="3" required placeholder="询问当前项目，或继续追问…"></textarea></label><div class="row"><button id="conversation-send">发送</button><button type="button" id="conversation-confirm" class="secondary" hidden>确认上次发送</button><button type="button" id="conversation-cancel" class="secondary" hidden>停止回答</button></div></form></section></section>`;
   const el=s=>root.querySelector(s), field=el('[name=text]'), feedback=(text,error=false)=>{if(!alive)return;el('#conversation-feedback').textContent=text;el('#conversation-feedback').className=error?'error':'';};
   field.value=params.get('question')||sessionStorage.getItem(draftKey(selected))||'';
@@ -2275,7 +2280,7 @@ async function conversationPage(root, projectId, params) {
     if(current){
       el('#conversation-rename').onclick=safe(async()=>{const title=prompt('会话标题',current.title);if(title===null)return;current=await api(`/agent/conversations/${selected}`,'PATCH',{title,expectedHistoryRevision:current.historyRevision});draw();await listing();feedback('标题已保存。');});
       el('#conversation-archive').onclick=safe(async()=>{current=await api(`/agent/conversations/${selected}`,'PATCH',{archived:!current.archived,expectedHistoryRevision:current.historyRevision});draw();await listing();feedback(current.archived?'会话已归档；恢复后可继续提问。':'会话已恢复。');});
-      el('#conversation-delete').onclick=safe(async()=>{if(!confirm('删除此会话及在线聊天正文？费用记录保留，已有备份按保留政策过期。'))return;const response=await api(`/agent/conversations/${selected}`,'DELETE');sessionStorage.removeItem(draftKey(selected));sessionStorage.removeItem(intentKey(selected));selected=null;remember();current=null;messages=[];draw();await listing();feedback(response.backupNotice);history.replaceState(null,'','#'+(embedded?assistantRoute(filter,null):`project/${filter}/agent`));});
+      el('#conversation-delete').onclick=safe(async()=>{if(!confirm('删除此会话及在线聊天正文？调用与用量记录保留，已有备份按保留政策过期。'))return;const response=await api(`/agent/conversations/${selected}`,'DELETE');sessionStorage.removeItem(draftKey(selected));sessionStorage.removeItem(intentKey(selected));selected=null;remember();current=null;messages=[];draw();await listing();feedback(response.backupNotice);history.replaceState(null,'','#'+(embedded?assistantRoute(filter,null):`project/${filter}/agent`));});
     }
     root.querySelectorAll('[data-retry]').forEach(b=>b.onclick=safe(()=>send(b.dataset.retry)));
     root.querySelectorAll('[data-citation]').forEach(b=>b.onclick=safe(async()=>{
@@ -2298,7 +2303,7 @@ async function conversationPage(root, projectId, params) {
   }
   async function create(){const p=filter||projects[0]?.id;if(!p){feedback('请先加入一个项目。',true);return;}const c=await api(`/projects/${p}/agent/conversations`,'POST');if(field.value)sessionStorage.setItem(draftKey(c.id),field.value);location.hash=routeFor(c.id,p);}
   async function send(retry=null,confirmPending=false){
-    if(!availability.enabled){feedback('此实例尚未启用项目助手，可查看和管理已保存会话。');return;}
+    if(!availability.enabled){feedback((modelReason(availability.reason)||'项目助手待配置。')+' 可查看和管理已保存会话。');return;}
     if(!selected){const p=filter||projects[0]?.id;if(!p){feedback('请先加入项目。',true);return;}current=await api(`/projects/${p}/agent/conversations`,'POST');selected=current.id;remember();history.replaceState(null,'','#'+routeFor(selected,p));}
     let intent=JSON.parse(sessionStorage.getItem(intentKey(selected))||'null');
     if(intent&&!confirmPending){feedback('上次提交回执尚未确认，请点“确认上次发送”；草稿可继续编辑。',true);return;}
@@ -2318,7 +2323,7 @@ async function conversationPage(root, projectId, params) {
   el('#conversation-older').onclick=safe(async()=>{const page=await api(`/agent/conversations/${selected}/messages?limit=20&before=${nextBefore}`);messages=[...page.items,...messages];nextBefore=page.nextBefore;draw();});
   el('#conversation-latest').onclick=safe(async()=>{messageBefore=null;await refresh();if(embedded)el('#conversation-messages').scrollTop=el('#conversation-messages').scrollHeight;else el('#conversation-compose').scrollIntoView({block:'end'});});
   draw();await listing();if(selected){await refresh(true,Number(params.get('turn'))||null);remember();focusTurn();}
-  if(!availability.enabled)feedback('此实例尚未启用项目助手，可查看和管理已保存会话。');
+  if(!availability.enabled)feedback((modelReason(availability.reason)||'项目助手待配置。')+' 可查看和管理已保存会话。');
   async function reauthorize(){if(!alive)return;if(selected)try{await api(`/agent/conversations/${selected}`);}catch(e){await refresh(false).catch(()=>{});}timer=setTimeout(reauthorize,4000);}
   timer=setTimeout(reauthorize,4000);
   return {selected:()=>selected,async navigate(next){

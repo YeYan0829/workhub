@@ -8,9 +8,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 
-/** Only complete protocol boundaries are persisted. A paid response without a boundary is NOT replayed. */
+/** Only complete protocol boundaries are persisted. A response without a boundary is NOT replayed. */
 @Service
 public class RunCheckpointStore {
+  @org.springframework.beans.factory.annotation.Autowired private TeamModels teams;
   private final JdbcTemplate db;private final Json json;private final ConversationService conversations;
   private final org.springframework.context.ApplicationEventPublisher events;
   public record Boundary(UUID run,String phase,int calls) {}
@@ -22,8 +23,8 @@ public class RunCheckpointStore {
     var scope=context.scope(run);if(scope==null)return null;context.check(run,attempt,actor,project);conversations.authorized(actor,scope.conversation(),true);
     var rows=db.queryForList("SELECT * FROM agent_run_checkpoint WHERE run_id=?",bytes(run));
     int calls=count(run);
-    long uncertain=db.queryForObject("SELECT COUNT(*) FROM "+settings.callTable()+" WHERE run_id=? AND state<>'COMPLETE'",Long.class,bytes(run));
-    if(uncertain>0)throw new ApiException(503,"MODEL_RESULT_UNKNOWN","上次模型请求结果未知，保留费用预留；不会自动重发，请明确重试");
+    long uncertain=db.queryForObject("SELECT COUNT(*) FROM "+teams.callTable(run)+" WHERE run_id=? AND state NOT IN ('COMPLETE','NOT_SENT')",Long.class,bytes(run));
+    if(uncertain>0)throw new ApiException(503,"MODEL_RESULT_UNKNOWN","上次模型请求结果未知；不会自动重发，请明确重试");
     if(rows.isEmpty()){if(calls>0)throw lost();return null;}
     var r=rows.get(0);
     if(((Number)r.get("call_count")).intValue()!=calls)throw lost();
@@ -47,6 +48,6 @@ public class RunCheckpointStore {
     db.update("UPDATE agent_run SET object_bindings=? WHERE id=?",json.write(protocol.bindings()),bytes(run));
     org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){public void afterCommit(){events.publishEvent(new Boundary(run,"AFTER",calls));}});
   }
-  private int count(UUID run){return db.queryForObject("SELECT COUNT(*) FROM "+settings.callTable()+" WHERE run_id=?",Integer.class,bytes(run));}
+  private int count(UUID run){return db.queryForObject("SELECT COUNT(*) FROM "+teams.callTable(run)+" WHERE run_id=?",Integer.class,bytes(run));}
   private ApiException lost(){return new ApiException(503,"CHECKPOINT_RESPONSE_LOST","模型调用已记录但响应未形成安全恢复点；停止自动接续，可显式重试");}
 }

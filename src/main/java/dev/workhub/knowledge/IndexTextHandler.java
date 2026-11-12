@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "workhub.retrieval.enabled", havingValue = "true")
 public class IndexTextHandler implements WorkHandler {
+  @org.springframework.beans.factory.annotation.Autowired(required=false) private TeamEmbeddingPipeline teamEmbedding;
   private final TextGenerations generations;
   private final SourceText sources;
   private final BusinessJobs jobs;
@@ -78,6 +79,7 @@ public class IndexTextHandler implements WorkHandler {
         ref = "text/generation/" + generation;
         var pipeline = dense.getIfAvailable();
         if (config == 1 && pipeline != null) pipeline.fanOut(job, generation);
+        if (config == 1 && teamEmbedding != null) teamEmbedding.fanOut(job,generation);
       }
     }
     return new Result(ref, Inputs.hash(ref));

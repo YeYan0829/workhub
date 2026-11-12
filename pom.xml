@@ -10,6 +10,7 @@
   <description>Engineering Work Hub domain, task and dependency services.</description>
   <properties>
     <java.version>17</java.version>
+    <workhub.test.jvmArgs>-Xmx384m -XX:ActiveProcessorCount=2</workhub.test.jvmArgs>
     <spring-ai.version>1.1.8</spring-ai.version>
     <elasticsearch.version>9.5.3</elasticsearch.version>
     <!-- Boot's 11.7.2 warns above MySQL 8.1; 11.20.3 verifies newer MySQL. -->
@@ -43,10 +44,10 @@
   <build><plugins>
     <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
-      <configuration><argLine>-Xmx384m -XX:ActiveProcessorCount=2</argLine></configuration>
+      <configuration><argLine>${workhub.test.jvmArgs}</argLine></configuration>
     </plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
-      <configuration><argLine>-Xmx384m -XX:ActiveProcessorCount=2</argLine></configuration>
+      <configuration><argLine>${workhub.test.jvmArgs}</argLine></configuration>
     </plugin>
   </plugins></build>
   <profiles>

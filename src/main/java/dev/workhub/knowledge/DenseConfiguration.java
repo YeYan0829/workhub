@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 /** Immutable embedding space identity. Credentials and budget are deliberately separate. */
 @Component
 @DependsOn("flywayInitializer")
-@ConditionalOnProperty(name = "workhub.embedding.enabled", havingValue = "true")
+@ConditionalOnExpression("${workhub.embedding.enabled:false} && ${workhub.embedding.legacy-mode:false}")
 public class DenseConfiguration {
   public final int id, dimensions;
   public final String model, protocol, endpoint, key, index, instruction, runId, identity;

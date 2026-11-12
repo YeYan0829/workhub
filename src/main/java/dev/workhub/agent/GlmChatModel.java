@@ -28,7 +28,7 @@ public class GlmChatModel implements AgentModel {
     return call(messages,tools,remainingMillis,()->{});
   }
   @Override public Reply call(List<Message> messages,List<FunctionTool> tools,long remainingMillis,Runnable beforeSend) {
-    long began=System.nanoTime();var timing=new LinkedHashMap<String,Long>();long[] headersAt={0},sentAt={0};
+    long began=System.nanoTime();var timing=new LinkedHashMap<String,Long>();long[] headersAt={0},sentAt={0},reported={-1,-1};
     c.available();
     if(remainingMillis<1) throw new ApiException(503,"AGENT_TIMEOUT","分析时间预算耗尽");
     var factory=new JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
@@ -70,11 +70,19 @@ public class GlmChatModel implements AgentModel {
         }).requestInterceptor((request,body,execution)->{
           if(observer!=null)observer.accept(new Wire("REQUEST",0,new String(body,java.nio.charset.StandardCharsets.UTF_8),(System.nanoTime()-began)/1_000_000));
           var response=execution.execute(request,body);headersAt[0]=System.nanoTime();timing.put("httpUntilHeadersMillis",(headersAt[0]-sentAt[0])/1_000_000);
-          if(observer==null)return response;
+          if(observer==null && c.legacyMode)return response;
           var bytes=response.getBody().readNBytes(1_000_001);
           if(bytes.length>1_000_000){response.close();throw new ApiException(503,"MODEL_RESPONSE_LIMIT","模型响应超出限制");}
           int status=response.getStatusCode().value();
-          observer.accept(new Wire("RESPONSE",status,status>=400?"{\"httpStatus\":"+status+"}":new String(bytes,java.nio.charset.StandardCharsets.UTF_8),(System.nanoTime()-began)/1_000_000));
+          if(!c.legacyMode && status>=200 && status<300) {
+            try {
+              var usage=new com.fasterxml.jackson.databind.ObjectMapper().readTree(bytes).path("usage");
+              var in=usage.path("prompt_tokens");var out=usage.path("completion_tokens");
+              if(in.isIntegralNumber() && in.canConvertToLong() && in.longValue()>=0)reported[0]=in.longValue();
+              if(out.isIntegralNumber() && out.canConvertToLong() && out.longValue()>=0)reported[1]=out.longValue();
+            }catch(java.io.IOException ignored){}
+          }
+          if(observer!=null)observer.accept(new Wire("RESPONSE",status,status>=400?"{\"httpStatus\":"+status+"}":new String(bytes,java.nio.charset.StandardCharsets.UTF_8),(System.nanoTime()-began)/1_000_000));
           return new org.springframework.http.client.ClientHttpResponse(){
             public org.springframework.http.HttpStatusCode getStatusCode()throws java.io.IOException{return response.getStatusCode();}
             public String getStatusText()throws java.io.IOException{return response.getStatusText();}
@@ -105,11 +113,12 @@ public class GlmChatModel implements AgentModel {
         .retryTemplate(RetryTemplate.builder().maxAttempts(1).build()).build();
     try {
       var r=model.call(new Prompt(messages,options));
-      if(r==null || r.getResults().size()!=1 || r.getMetadata().getUsage()==null)
+      if(r==null || r.getResults().size()!=1 || c.legacyMode && r.getMetadata().getUsage()==null)
         throw new ApiException(503,"GLM_INVALID_RESPONSE","模型响应不完整");
       var g=r.getResult(); var usage=r.getMetadata().getUsage();
       timing.put("bodyReadAndDecodeMillis",headersAt[0]==0?0:(System.nanoTime()-headersAt[0])/1_000_000);
-      return new Reply(g.getOutput(),usage.getPromptTokens(),usage.getCompletionTokens(),
+      return new Reply(g.getOutput(),c.legacyMode?usage.getPromptTokens():reported[0],
+          c.legacyMode?usage.getCompletionTokens():reported[1],
           Objects.toString(g.getMetadata().getFinishReason(),"").toLowerCase(Locale.ROOT),r.getMetadata().getModel(),Map.copyOf(timing));
     } catch(RestClientResponseException e) {
       throw new ModelHttpFailure(e.getStatusCode().value(),e.getResponseHeaders()==null?null:e.getResponseHeaders().getFirst("Retry-After"),java.time.Instant.now());

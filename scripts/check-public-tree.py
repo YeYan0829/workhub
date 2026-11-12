@@ -13,17 +13,19 @@ ROOT_FILES = {
     'Dockerfile', '.dockerignore', 'docker/Healthcheck.java',
     'mvnw', 'mvnw.cmd', 'package.json', 'package-lock.json',
     'compose.yaml', 'compose.test.yaml', 'compose.conversation-test.yaml',
-    'compose.governance-test.yaml',
+    'compose.governance-test.yaml', 'compose.team-model-test.yaml',
     '.mvn/jvm.config', '.mvn/maven.config', '.mvn/wrapper/maven-wrapper.properties',
     '.github/workflows/public-tree.yml',
 }
 DOC_FILES = {
     'docs/ARCHITECTURE.md', 'docs/TESTING.md',
-    'docs/assets/project-overview.png', 'docs/assets/assistant-answer.png',
+    'docs/assets/project-overview.png', 'docs/assets/project-task.png', 'docs/assets/project-collaboration.png', 'docs/assets/model-settings.png',
 }
 SCRIPT_FILES = {
+    'test-project-overview-ui.sh', 'verify-project-overview-ui.cjs',
+    'test-project-overview-realtime.sh', 'verify-project-overview-realtime.cjs', 'verify-overview-instance-switch.cjs', 'benchmark-project-overview.cjs', 'load-project-overview.cjs',
     'admin.sh', 'bootstrap-jdk.py', 'init-env.py', 'java-env.sh', 'jdk-lock.json',
-    'model-admission.py', 'mysql-init.sh', 'run-app.sh', 'run.sh', 'test-core.sh',
+    'test-team-model.sh', 'init-team-model-test.sh', 'test-model-settings-ui.sh', 'verify-model-settings-ui.cjs', 'model-admission.py', 'mysql-init.sh', 'run-app.sh', 'run.sh', 'test-core.sh',
     'init-test-env.sh', 'init-phase1-test-db.sh', 'init-phase2-test-env.sh',
     'init-phase3-test-env.sh', 'init-phase3x-test-env.sh',
     'init-phase4-test-env.sh', 'init-phase4b-test-env.sh', 'init-phase5a-test-env.sh',

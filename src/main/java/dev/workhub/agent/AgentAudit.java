@@ -10,6 +10,11 @@ import org.springframework.transaction.annotation.*;
 /** Per-request accounting. No answer/repair holds and no scheduling decisions. */
 @Service
 public class AgentAudit {
+  @org.springframework.beans.factory.annotation.Autowired(required=false) private TeamModels teams;
+  @org.springframework.beans.factory.annotation.Autowired(required=false) private TeamModelUsage teamUsage;
+  private boolean team(UUID run){return teams!=null && !teams.legacy();}
+  public String callTable(UUID run){return teams==null?c.callTable():teams.callTable(run);}
+  public String model(UUID run){return teams==null?c.model:teams.model(run);}
   private final JdbcTemplate db;
   private final Json json;
   private final AgentSettings c;
@@ -23,7 +28,7 @@ public class AgentAudit {
 
   @Transactional(propagation=Propagation.REQUIRES_NEW,readOnly=true)
   public int calls(UUID run) {
-    return db.queryForObject("SELECT COUNT(*) FROM "+c.callTable()+" WHERE run_id=?",Integer.class,bytes(run));
+    return db.queryForObject("SELECT COUNT(*) FROM "+callTable(run)+" WHERE run_id=?",Integer.class,bytes(run));
   }
   @Transactional(propagation=Propagation.REQUIRES_NEW)
   public void trace(UUID run,UUID attempt,String kind,Object payload) {
@@ -39,6 +44,11 @@ public class AgentAudit {
     // Admit a triage call under the same project barrier used by archive/task mutations.
     // Project before run matches the worker's lock order. This transaction ends BEFORE model I/O.
     var scope=db.queryForMap("SELECT project_id,actor_id,conversation_id,turn_id,triage_task_id,automatic_task_id FROM agent_run WHERE id=?",bytes(run));
+    if(team(run)){
+      UUID project=uuid((byte[])scope.get("project_id"));
+      UUID workspace=uuid(db.queryForObject("SELECT workspace_id FROM project WHERE id=?",byte[].class,bytes(project)));
+      identities.lockWorkspace(workspace);db.queryForList("SELECT id FROM project WHERE id=? FOR SHARE",bytes(project));
+    }
     if(scope.get("conversation_id")!=null){
       UUID project=uuid((byte[])scope.get("project_id")),user=uuid((byte[])scope.get("actor_id"));
       UUID workspace=uuid(db.queryForObject("SELECT workspace_id FROM project WHERE id=?",byte[].class,bytes(project)));
@@ -60,7 +70,7 @@ public class AgentAudit {
     current(run,attempt);
   }
   @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
-  public void check(UUID run,UUID attempt) { c.available();authorized(run,attempt); }
+  public void check(UUID run,UUID attempt) { if(teams!=null)teams.verifyMode(run);if(!team(run))c.available();authorized(run,attempt);if(team(run))teams.verify(run); }
 
   @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
   public long reserveWait(UUID run,UUID attempt,long requested) {
@@ -91,8 +101,10 @@ public class AgentAudit {
   @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
   public UUID reserve(UUID run,UUID attempt,long input,long output,String purpose) {
     if(!Set.of("ANSWER","COMPACTION").contains(purpose))throw new IllegalArgumentException();
-    c.available();
+    if(teams!=null)teams.verifyMode(run);
+    if(!team(run))c.available();
     authorized(run,attempt);
+    if(team(run))return teamUsage.begin(run,attempt,input,output,purpose);
     if(input<0 || output<0 || input>c.maxRequestInputBound || output>AgentSettings.MAX_OUTPUT)
       throw new ApiException(503,"AGENT_REQUEST_BUDGET","请求超过授权输入输出上界");
     if(calls(run)>=AgentSettings.MAX_ROUNDS)
@@ -123,11 +135,12 @@ public class AgentAudit {
   }
   /** Finalize only with synchronous proof that transport never started: an unreached send boundary
    * or the adapter's explicit UnsentFailure. A network/response failure is not such proof.
-   * COMPLETE means the local ledger is finalized; error_code distinguishes a zero-charge unsent call.
+   * Team calls become NOT_SENT. Legacy COMPLETE uses error_code to mark a zero-charge unsent call.
    * Crash recovery MUST NOT call this: a persisted RESERVED row alone proves nothing about transport.
    */
   @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
   public void finishUnsent(UUID call,long elapsed,String error) {
+    if(teamUsage!=null && teamUsage.owns(call)){teamUsage.finish(call,null,null,elapsed,error,true);return;}
     var row=db.queryForMap("SELECT state,authorization_id,"+c.moneyColumn("reserved")+" reservation FROM "+c.callTable()+" WHERE id=? FOR UPDATE",bytes(call));
     if(!c.authorization.equals(row.get("authorization_id")))throw new IllegalArgumentException("Foreign authorization");
     if(!"RESERVED".equals(row.get("state")))return;
@@ -135,7 +148,13 @@ public class AgentAudit {
     db.update("UPDATE "+c.callTable()+" SET state='COMPLETE',input_tokens=0,output_tokens=0,"+c.moneyColumn("estimated")+"=0,elapsed_millis=?,error_code=? WHERE id=?",elapsed,error,bytes(call));
   }
   @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
+  public void finishHttpFailure(UUID call,long elapsed,String error) {
+    if(teamUsage!=null && teamUsage.owns(call)){teamUsage.finishHttpFailure(call,elapsed,error);return;}
+    finish(call,null,null,elapsed,error); // Explicit legacy mode retains its original ledger rules.
+  }
+  @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
   public void finish(UUID call,Long input,Long output,long elapsed,String error) {
+    if(teamUsage!=null && teamUsage.owns(call)){teamUsage.finish(call,input,output,elapsed,error,false);return;}
     var row=db.queryForMap("SELECT state,authorization_id,input_token_bound,output_token_bound,"+c.moneyColumn("reserved")+" reservation FROM "+c.callTable()+" WHERE id=? FOR UPDATE",bytes(call));
     if(!c.authorization.equals(row.get("authorization_id")))throw new IllegalArgumentException("Foreign authorization");
     if(!"RESERVED".equals(row.get("state")))return; // Duplicate completion cannot release twice.

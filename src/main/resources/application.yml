@@ -92,7 +92,10 @@ workhub:
     redis-host: ${MODEL_ADMISSION_REDIS_HOST:127.0.0.1}
     redis-port: ${MODEL_ADMISSION_REDIS_PORT:16380}
     redis-password: ${MODEL_ADMISSION_REDIS_PASSWORD:}
+  team-model:
+    master-key: ${WORKHUB_MODEL_MASTER_KEY:}
   agent:
+    legacy-mode: ${WORKHUB_AGENT_LEGACY_MODE:false}
     enabled: ${WORKHUB_AGENT_ENABLED:false}
     endpoint: ${WORKHUB_GLM_ENDPOINT:https://api.z.ai/api/paas/v4/chat/completions}
     model: ${WORKHUB_GLM_MODEL:glm-4.7}
@@ -101,6 +104,7 @@ workhub:
     authorization-id: ${WORKHUB_GLM_AUTHORIZATION_ID:}
     budget-usd: ${WORKHUB_GLM_BUDGET_USD:0}
   embedding:
+    legacy-mode: ${WORKHUB_EMBEDDING_LEGACY_MODE:false}
     enabled: ${WORKHUB_EMBEDDING_ENABLED:false}
     config-id: ${WORKHUB_EMBEDDING_CONFIG_ID:2}
     model: ${WORKHUB_EMBEDDING_MODEL:text-embedding-v4}
@@ -125,6 +129,8 @@ workhub:
     enabled: ${WORKHUB_MESSAGING_ENABLED:false}
     consumer-enabled: true
     poll-ms: 500
+    publish-batch-size: ${WORKHUB_PUBLISH_BATCH_SIZE:20}
+    publish-batch-ms: ${WORKHUB_PUBLISH_BATCH_MS:200}
     confirm-timeout-ms: 5000
     recovery-epoch: ${WORKHUB_RECOVERY_EPOCH:}
   bootstrap:

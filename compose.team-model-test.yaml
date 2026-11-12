@@ -1,0 +1,42 @@
+# Independent resources for team governance; never reuse a demonstration database.
+name: workhub-team-model-test
+services:
+  mysql:
+    image: mysql:8.4.11@sha256:85b9bf2e29cf836ecb8c2a15a935d4ba0c606631dff1dd79531a11983c638f2a
+    environment:
+      MYSQL_ROOT_PASSWORD: team-model-root-local-only
+      MYSQL_DATABASE: workhub_team_model_test
+      MYSQL_USER: team_model_fixture
+      MYSQL_PASSWORD: team-model-local-only
+    ports: ["127.0.0.1:28306:3306"]
+    command: [--innodb-buffer-pool-size=134217728, --max-connections=60, --log-bin-trust-function-creators=ON]
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$${MYSQL_ROOT_PASSWORD}" mysqladmin ping -h 127.0.0.1 -uroot --silent']
+      interval: 3s
+      timeout: 3s
+      retries: 60
+  redis:
+    image: redis:8.2.9@sha256:7d1e4ce8b9395088377ab382d1f6cfdbd13b3690795198a0399ab8d683064d6d
+    ports: ["127.0.0.1:28379:6379"]
+    command: [redis-server, --maxmemory-policy, noeviction, --save, '', --appendonly, 'no']
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.3@sha256:f456578fc2a620a8a4f4c21d070fff1f6070345adb2be5e5626b65be72aea350
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      xpack.license.self_generated.type: basic
+      xpack.ml.enabled: 'false'
+      ES_JAVA_OPTS: '-Xms384m -Xmx384m -XX:ActiveProcessorCount=2'
+    ports: ["127.0.0.1:29200:9200"]
+    mem_limit: 1024m
+    cpus: 2
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s" >/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 60

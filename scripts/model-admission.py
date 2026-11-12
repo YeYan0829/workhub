@@ -46,6 +46,7 @@ def main():
     p.add_argument('--host', default='127.0.0.1')
     p.add_argument('--port', type=int, default=16380)
     p.add_argument('--scope', required=True)
+    p.add_argument('--team-version', type=int, help='Connection version from the team configuration API')
     p.add_argument('--rate', default='2.0')
     p.add_argument('--burst', type=int, default=1)
     p.add_argument('--recovery-ms', type=int)
@@ -62,6 +63,9 @@ def main():
     normalized = str(float(rate))
     if '.' not in normalized:
         normalized += '.0'
+    if a.team_version is not None and (a.team_version < 1 or not a.scope.startswith('team-')):
+        p.error('Team initialization requires a team scope and positive connection version')
+    contract = f'team-v1|{a.team_version}|{normalized}|{a.burst}' if a.team_version is not None else f'v1|{normalized}|{a.burst}'
     key = 'workhub:model:{' + a.scope + '}'
     if a.operation == 'initialize' and (not a.confirmed_prior_cooldown or a.recovery_ms is None or a.recovery_ms < int((1000 * a.burst / rate).to_integral_value(rounding=decimal.ROUND_CEILING))):
         p.error('Initialization requires an explicit recovery period covering the quota window and confirmation of prior cooldowns')
@@ -78,7 +82,7 @@ def main():
         else:
             lua = pathlib.Path(__file__).resolve().parents[1] / 'src/main/resources/model/admission.lua'
             result = command(stream, 'EVAL', lua.read_bytes(), 2, key, key + ':init', 'initialize',
-                             f'v1|{normalized}|{a.burst}', normalized, a.burst, a.recovery_ms, str(uuid.uuid4()))
+                             contract, normalized, a.burst, a.recovery_ms, str(uuid.uuid4()))
             print(json.dumps({'scope': a.scope, 'result': result}, ensure_ascii=False))
             if result[0] != 'INITIALIZED':
                 raise SystemExit('Existing state was preserved; inspect it. This command never overwrites a live quota.')

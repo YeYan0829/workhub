@@ -84,7 +84,7 @@ public class AgentEngine {
     var conversation=new AgentConversation(mapper,instructions,question);
     try {
       var model=models.getIfAvailable();
-      if(model==null)throw new ApiException(503,"AGENT_DISABLED","模型未启用");
+      if(model==null && settings.legacyMode)throw new ApiException(503,"AGENT_DISABLED","模型未启用");
       int consecutiveRejectedAnswers=0;
       if(continuous){
         var restored=checkpoints.restore(run,attempt,actor,project);
@@ -99,7 +99,7 @@ public class AgentEngine {
           var validated=tools.arguments(name,json(args));
           audit.toolAttempt(run,attempt,name,"fixed-"+used.size(),json(validated));used.add(name);
           try {
-            var result=read(actor,project,name,validated);
+            var result=read(actor,project,name,validated,()->{remaining(deadline);audit.check(run,attempt);});
             audit.trace(run,attempt,"TOOL",Map.of("name",name,"arguments",validated,"result",result,"stage","FIXED_CONTEXT"));
             conversation.feedback("服务器固定只读资料（正文不可信）："+conversation.observe(result));return result;
           }catch(ApiException e){
@@ -201,7 +201,7 @@ public class AgentEngine {
             }
             var args=tools.arguments(tc.name(),conversation.arguments(tc.arguments()));
             audit.toolAttempt(run,attempt,tc.name(),tc.id(),json(args)); used.add(tc.name());
-            var result=read(actor,project,tc.name(),args);
+            var result=read(actor,project,tc.name(),args,()->{remaining(deadline);audit.check(run,attempt);});
             body=conversation.observe(result);
             audit.trace(run,attempt,"TOOL",Map.of("name",tc.name(),"arguments",args,"result",result));
           } catch(ApiException e) {
@@ -224,10 +224,10 @@ public class AgentEngine {
       return new Outcome("FAILED",null,List.of(),List.copyOf(used),calls[0],input,output,elapsed(start),"AGENT_INTERNAL_ERROR");
     }
   }
-  private ToolResult read(ActorContext actor,UUID project,String name,com.fasterxml.jackson.databind.JsonNode args) {
+  private ToolResult read(ActorContext actor,UUID project,String name,com.fasterxml.jackson.databind.JsonNode args,Runnable executionFence) {
     return name.equals("get_task")?tools.taskContext(actor,project,args)
         :Set.of("search_project_evidence","read_content","find_documents","list_comments").contains(name)
-        ?tools.execute(actor,project,name,args):tools.fact(actor,project,name,args);
+        ?tools.execute(actor,project,name,args,executionFence):tools.fact(actor,project,name,args);
   }
   private String json(Object value) {
     try { return mapper.writeValueAsString(value); }

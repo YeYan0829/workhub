@@ -33,7 +33,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.*;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={"workhub.messaging.enabled=false","workhub.retrieval.enabled=true",
-    "workhub.embedding.enabled=false","workhub.agent.enabled=true","workhub.github.enabled=false",
+    "workhub.embedding.enabled=false","workhub.agent.legacy-mode=true","workhub.agent.enabled=true","workhub.github.enabled=false",
     "workhub.bootstrap.login=","debug=false","logging.level.root=INFO","server.servlet.session.cookie.secure=false",
     "workhub.agent.authorization-id=phase5a-loopback-v1","workhub.agent.budget-usd=0"})
 @AutoConfigureMockMvc

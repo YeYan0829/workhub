@@ -284,9 +284,13 @@ public class TextGenerations {
   }
 
   public UUID buildVector(WorkJobRepository.Job job, UUID text, DenseConfiguration c) {
+    return buildVector(job,text,c.id,c.dimensions);
+  }
+
+  public UUID buildVector(WorkJobRepository.Job job, UUID text, int config, int dimensions) {
     var source = sources.load(job.project(), job.owner());
     var tg = generation(text);
-    if (((Number) tg.get("config_id")).intValue() != c.id || !"TEXT".equals(tg.get("stage")))
+    if (((Number) tg.get("config_id")).intValue() != config || !"TEXT".equals(tg.get("stage")))
       throw new WorkFailure(false, "VECTOR_CONFIG_MISMATCH");
     copyCanonical(source, text);
     var existing =
@@ -302,14 +306,14 @@ public class TextGenerations {
           db.queryForList(
               "SELECT * FROM embedding_artifact WHERE source_id=? AND config_id=? AND input_hash=?",
               bytes(source.id()),
-              c.id,
+              config,
               chunk.get("body_hash"));
       if (rows.isEmpty()) throw new WorkFailure(true, "VECTOR_ARTIFACTS_INCOMPLETE");
       var a = rows.get(0);
-      if (((Number) a.get("dimensions")).intValue() != c.dimensions)
+      if (((Number) a.get("dimensions")).intValue() != dimensions)
         throw new WorkFailure(false, "ARTIFACT_DIMENSION_MISMATCH");
       VectorBytes.decode(
-          (byte[]) a.get("vector_bytes"), c.dimensions, (String) a.get("vector_hash"));
+          (byte[]) a.get("vector_bytes"), dimensions, (String) a.get("vector_hash"));
       artifacts.put(((Number) chunk.get("ordinal")).intValue(), a);
     }
     long number =
@@ -317,7 +321,7 @@ public class TextGenerations {
             "SELECT desired_generation+1 FROM source_index_state WHERE source_id=? AND config_id=?",
             Long.class,
             bytes(source.id()),
-            c.id);
+            config);
     UUID id = UUID.randomUUID();
     // Vector integrity is included in each immutable payload hash; canonical span manifest remains
     // compatible.
@@ -328,7 +332,7 @@ public class TextGenerations {
         bytes(id),
         bytes(source.id()),
         bytes(source.project()),
-        c.id,
+        config,
         number,
         source.revision(),
         source.hash(),
@@ -346,7 +350,7 @@ public class TextGenerations {
               ordinal,
               (String) chunk.get("title"),
               (String) chunk.get("body"),
-              c.id,
+              config,
               "VECTOR",
               a);
       db.update(
@@ -367,7 +371,7 @@ public class TextGenerations {
         "UPDATE source_index_state SET desired_generation=? WHERE source_id=? AND config_id=?",
         number,
         bytes(source.id()),
-        c.id);
+        config);
     return id;
   }
 

@@ -14,7 +14,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 
-@org.springframework.test.annotation.DirtiesContext(classMode=org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
+@org.springframework.test.annotation.DirtiesContext(
+        classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 class ConcurrencyIT extends Phase1Support {
     @RepeatedTest(10)
     void f02OppositeEdgesWaitForTheSameProjectLock(RepetitionInfo repetition) throws Exception {
@@ -211,7 +212,8 @@ class ConcurrencyIT extends Phase1Support {
         }
     }
 
-    // Read-only diagnostics using the existing local Compose root identity; no new DB grants.
+    // Native fixtures may supply a separate, read-only performance_schema observer.
+    // The default Compose path keeps the existing root diagnostic identity.
     private static String lockEvidence(long connection) throws Exception {
         String sql =
                 "SELECT t.PROCESSLIST_ID AS waiting_connection,b.PROCESSLIST_ID AS"
@@ -221,6 +223,30 @@ class ConcurrencyIT extends Phase1Support {
                     + " b.THREAD_ID=w.BLOCKING_THREAD_ID JOIN performance_schema.data_locks l ON"
                     + " l.ENGINE_LOCK_ID=w.REQUESTING_ENGINE_LOCK_ID WHERE t.PROCESSLIST_ID="
                         + connection;
+        String diagnosticUrl = System.getenv("WORKHUB_TEST_DIAGNOSTICS_JDBC_URL");
+        if (diagnosticUrl != null && !diagnosticUrl.isBlank()) {
+            try (var database =
+                            java.sql.DriverManager.getConnection(
+                                    diagnosticUrl,
+                                    System.getenv("WORKHUB_TEST_DIAGNOSTICS_USER"),
+                                    System.getenv("WORKHUB_TEST_DIAGNOSTICS_PASSWORD"));
+                    var statement = database.createStatement()) {
+                statement.setQueryTimeout(2);
+                try (var rows = statement.executeQuery(sql)) {
+                    StringBuilder result = new StringBuilder();
+                    while (rows.next()) {
+                        for (int column = 1;
+                                column <= rows.getMetaData().getColumnCount();
+                                column++) {
+                            if (column > 1) result.append('\t');
+                            result.append(rows.getString(column));
+                        }
+                        result.append('\n');
+                    }
+                    return result.toString();
+                }
+            }
+        }
         var process =
                 new ProcessBuilder(
                                 "docker",

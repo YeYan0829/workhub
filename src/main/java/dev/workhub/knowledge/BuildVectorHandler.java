@@ -3,11 +3,11 @@ package dev.workhub.knowledge;
 import dev.workhub.common.*;
 import dev.workhub.messaging.*;
 import java.util.*;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(name = "workhub.embedding.enabled", havingValue = "true")
+@ConditionalOnExpression("${workhub.embedding.enabled:false} && ${workhub.embedding.legacy-mode:false}")
 public class BuildVectorHandler implements WorkHandler {
   private final DensePipeline pipeline;
   private final TextGenerations generations;

@@ -5,11 +5,11 @@ import dev.workhub.identity.*;
 import dev.workhub.messaging.WorkFailure;
 import java.time.Instant;
 import java.util.*;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Service;
 
 @Service
-@ConditionalOnProperty(name = "workhub.embedding.enabled", havingValue = "true")
+@ConditionalOnExpression("${workhub.embedding.enabled:false} && ${workhub.embedding.legacy-mode:false}")
 public class DenseSearch {
   private final ProjectAccess access;
   private final KnowledgeReads reads;
@@ -36,7 +36,15 @@ public class DenseSearch {
       Instant observedAt,
       String degradedReason,
       long vectorSources,
-      long searchMillis) {}
+      long searchMillis,
+      UUID executionId) {
+    public Search(List<KnowledgeReads.Evidence> results,int configId,String strategy,String requestedStrategy,
+        boolean retrievalComplete,int droppedStale,int fetchedCandidates,long totalCandidates,long indexLag,
+        Instant observedAt,String degradedReason,long vectorSources,long searchMillis){
+      this(results,configId,strategy,requestedStrategy,retrievalComplete,droppedStale,fetchedCandidates,
+          totalCandidates,indexLag,observedAt,degradedReason,vectorSources,searchMillis,null);
+    }
+  }
 
   private record Lane(KnowledgeReads.Hydrated hydrated, TextIndex.Candidates candidates) {}
 

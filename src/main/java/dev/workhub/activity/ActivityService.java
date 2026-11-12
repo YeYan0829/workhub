@@ -92,6 +92,10 @@ public class ActivityService {
                     Map.of(after.assigneeId(), Set.of("ASSIGNED")));
     }
 
+    public void upstreamCompleted(UUID project, UUID upstream, ActorContext actor, UUID cause) {
+        repository.unblockedBy(project, upstream, actor, cause);
+    }
+
     public void unblocked(List<Task> before, ActorContext actor, UUID cause) {
         for (Task old : before) {
             Task current = tasks.find(old.projectId(), old.id()).orElseThrow();
@@ -112,7 +116,7 @@ public class ActivityService {
                             actor,
                             Map.of(current.assigneeId(), Set.of("UNBLOCKED")),
                             true); // A new downstream task is actionable even for the upstream
-                                   // actor.
+                // actor.
             }
         }
     }

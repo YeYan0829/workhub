@@ -8,7 +8,7 @@ services:
       MYSQL_USER: conversation
       MYSQL_PASSWORD: conversation-local-test
     ports: ["127.0.0.1:23316:3306"]
-    command: ["--innodb-buffer-pool-size=128M"]
+    command: ["--innodb-buffer-pool-size=128M", "--log-bin-trust-function-creators=ON"]
     mem_limit: 512m
     healthcheck:
       test: [CMD, mysqladmin, ping, -h, localhost, -pconversation-local-root]

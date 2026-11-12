@@ -24,7 +24,7 @@ import org.springframework.test.context.*;
 
 /** Actual scheduled publisher and Rabbit listener; never calls a paid provider. */
 @SpringBootTest(properties={"workhub.messaging.enabled=true","workhub.messaging.poll-ms=100",
-    "workhub.messaging.consumer-enabled=false","workhub.agent.enabled=true",
+    "workhub.messaging.consumer-enabled=false","workhub.agent.legacy-mode=true","workhub.agent.enabled=true",
     "workhub.retrieval.enabled=false","workhub.embedding.enabled=false","workhub.github.enabled=false",
     "workhub.agent.budget-usd=0","workhub.bootstrap.login=","debug=false","logging.level.root=INFO"})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)

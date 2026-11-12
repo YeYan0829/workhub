@@ -54,6 +54,11 @@ class BrokerRestartIT extends Phase2Support {
     }
 
     void command(String command) throws Exception {
+        var directory =
+                java.nio.file.Path.of(
+                        System.getProperty(
+                                "workhub.test.evidence", "target/evidence/phase2/regression"));
+        java.nio.file.Files.createDirectories(directory);
         var p =
                 new ProcessBuilder(
                                 "docker",
@@ -67,11 +72,8 @@ class BrokerRestartIT extends Phase2Support {
                                 command)
                         .redirectErrorStream(true)
                         .redirectOutput(
-                                java.nio.file.Path.of(
-                                                System.getProperty(
-                                                        "workhub.test.evidence",
-                                                        "target/evidence/phase2/regression"),
-                                                command + "-" + UUID.randomUUID() + ".log")
+                                directory
+                                        .resolve(command + "-" + UUID.randomUUID() + ".log")
                                         .toFile())
                         .start();
         try {

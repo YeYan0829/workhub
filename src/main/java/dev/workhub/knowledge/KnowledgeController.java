@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/projects/{p}/knowledge")
 @ConditionalOnProperty(name = "workhub.retrieval.enabled", havingValue = "true")
 public class KnowledgeController {
+  @org.springframework.beans.factory.annotation.Autowired(required=false) private TeamDenseSearch teamDense;
   private final KnowledgeService service;
   private final KnowledgeReads reads;
   private final CurrentActor actors;
@@ -35,6 +36,7 @@ public class KnowledgeController {
       @RequestParam(defaultValue = "10") int limit,
       @RequestParam(defaultValue = "BM25") String strategy) {
     if (strategy.equals("BM25")) return service.search(actors.from(actor), p, q, limit);
+    if(teamDense!=null)return teamDense.search(actors.from(actor),p,q,limit,strategy);
     var retrieval = dense.getIfAvailable();
     if (retrieval == null)
       throw new dev.workhub.common.ApiException(503, "DENSE_DISABLED", "向量检索尚未启用");

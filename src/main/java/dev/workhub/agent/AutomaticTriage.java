@@ -38,7 +38,7 @@ public class AutomaticTriage {
     var old=configuration(project);
     if(old.revision()!=request.expectedRevision())throw ApiException.conflict("TRIAGE_SETTINGS_REVISION_CONFLICT",old.revision());
     if(request.strategy()==null)throw ApiException.invalid("请选择自动分析方式");
-    if(request.enabled())settings.available();
+    if(request.enabled())runs.available(project);
     db.update("INSERT INTO project_triage_settings(project_id,enabled,strategy,revision,updated_by,enabled_since) VALUES (?,?,?,?,?,IF(?,UTC_TIMESTAMP(6),NULL))"
         +" ON DUPLICATE KEY UPDATE enabled_since=IF(VALUES(enabled) AND NOT enabled,UTC_TIMESTAMP(6),enabled_since),enabled=VALUES(enabled),strategy=VALUES(strategy),revision=VALUES(revision),updated_by=VALUES(updated_by)",
         bytes(project),request.enabled(),request.strategy().name(),old.revision()+1,bytes(actor.userId()),request.enabled());

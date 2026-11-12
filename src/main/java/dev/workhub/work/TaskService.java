@@ -215,7 +215,6 @@ public class TaskService {
                 && priority == old.priority()
                 && Objects.equals(assignee, old.assigneeId())
                 && Objects.equals(due, old.dueDate())) return old;
-        List<Task> downstream = status == old.status() ? List.of() : tasks.downstream(project, id);
         if (tasks.update(old, title, description, status, type, priority, assignee, due, expected)
                 != 1)
             throw ApiException.conflict("TASK_REVISION_CONFLICT", require(project, id).revision());
@@ -258,7 +257,8 @@ public class TaskService {
                         || old.triageRequired()
                                 && status == TaskStatus.CANCELED
                                 && old.status() != status);
-        activity.unblocked(downstream, actor, cause);
+        if (old != null && old.status() != TaskStatus.DONE && status == TaskStatus.DONE)
+            activity.upstreamCompleted(project, id, actor, cause);
         return result;
     }
 
@@ -310,8 +310,6 @@ public class TaskService {
                 && old.title().equals(title)
                 && old.description().equals(body)
                 && old.status() == status) return old;
-        List<Task> downstream =
-                old == null || old.status() == status ? List.of() : tasks.downstream(project, id);
         if (old == null) {
             id = UUID.randomUUID();
             tasks.insertGitHub(project, id, title, body, status, importActor);
@@ -339,7 +337,8 @@ public class TaskService {
         projects.increment(project);
         Task result = require(project, id);
         activity.record(project, id, actor, cause, "GITHUB_OBSERVED", old, result);
-        activity.unblocked(downstream, actor, cause);
+        if (old != null && old.status() != TaskStatus.DONE && status == TaskStatus.DONE)
+            activity.upstreamCompleted(project, id, actor, cause);
         return result;
     }
 

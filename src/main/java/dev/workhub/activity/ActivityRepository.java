@@ -66,6 +66,38 @@ public class ActivityRepository {
                 json.write(reasons));
     }
 
+    /** Preserve per-task notification facts without loading every downstream body into the JVM. */
+    public void unblockedBy(UUID project, UUID upstream, ActorContext actor, UUID cause) {
+        jdbc.update(
+                """
+INSERT INTO activity(project_id,task_id,fact_key,kind,actor_type,actor_id,cause_id,before_state,after_state)
+SELECT t.project_id,t.id,CONCAT(?, '/',BIN_TO_UUID(t.id),'/TASK_UNBLOCKED'),'TASK_UNBLOCKED',?,?,?,
+  JSON_OBJECT('isBlocked',TRUE),JSON_OBJECT('isBlocked',FALSE)
+FROM task_dependency direct JOIN task t ON t.project_id=direct.project_id AND t.id=direct.blocked_id
+WHERE direct.project_id=? AND direct.blocker_id=? AND NOT EXISTS
+ (SELECT 1 FROM task_dependency d JOIN task b ON b.project_id=d.project_id AND b.id=d.blocker_id
+  WHERE d.project_id=t.project_id AND d.blocked_id=t.id AND b.status<>'DONE')
+""",
+                cause.toString(),
+                actor.type(),
+                actor.type().equals("GITHUB_SYNC") ? null : bytes(actor.userId()),
+                bytes(cause),
+                bytes(project),
+                bytes(upstream));
+        jdbc.update(
+                """
+INSERT INTO notification(project_id,activity_id,recipient_id,reason_set)
+SELECT a.project_id,a.id,t.assignee_id,JSON_ARRAY('UNBLOCKED') FROM activity a
+JOIN task t ON t.project_id=a.project_id AND t.id=a.task_id
+JOIN project p ON p.id=t.project_id JOIN project_member pm ON pm.project_id=p.id AND pm.user_id=t.assignee_id AND pm.active
+JOIN workspace_member wm ON wm.workspace_id=p.workspace_id AND wm.user_id=pm.user_id AND wm.active
+JOIN app_user u ON u.id=pm.user_id AND u.active
+WHERE a.project_id=? AND a.cause_id=? AND a.kind='TASK_UNBLOCKED'
+""",
+                bytes(project),
+                bytes(cause));
+    }
+
     public record Activity(
             long id,
             UUID taskId,

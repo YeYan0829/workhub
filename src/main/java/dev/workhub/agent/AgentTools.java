@@ -27,6 +27,7 @@ public class AgentTools {
   private final GitHubEvidence linked;
   private final ObjectProvider<KnowledgeService> knowledge;
   private final KnowledgeReads reads;
+  @org.springframework.beans.factory.annotation.Autowired(required=false) private dev.workhub.knowledge.TeamDenseSearch teamDense;
   private final ObjectProvider<DenseSearch> dense;
   private final JdbcTemplate db;
   private final ObjectMapper mapper;
@@ -112,15 +113,16 @@ public class AgentTools {
   private boolean contains(JsonNode a,String v){for(var n:a)if(n.asText().equals(v))return true;return false;}
 
   // Network retrieval deliberately outside the structural read transaction.
-  public ToolResult execute(ActorContext actor,UUID project,String name,JsonNode args) {
+  public ToolResult execute(ActorContext actor,UUID project,String name,JsonNode args) {return execute(actor,project,name,args,()->{});}
+  public ToolResult execute(ActorContext actor,UUID project,String name,JsonNode args,Runnable executionFence) {
     access.read(actor,project);
     if(Set.of("read_content","find_documents","list_comments").contains(name))return navigation.execute(actor,project,name,args);
     if(!name.equals("search_project_evidence")) throw new IllegalArgumentException("Use fact() for structural tools");
     String strategy=args.path("strategy").asText("DENSE");int limit=args.path("limit").asInt(5);
     var d=dense.getIfAvailable();
     List<KnowledgeReads.Evidence> evidence;Object result;int config;var limits=new ArrayList<String>();
-    if(d!=null) {
-      var r=d.search(actor,project,args.path("query").asText(),limit,strategy); result=r;evidence=r.results();config=r.configId();
+    if(teamDense!=null || d!=null) {
+      var r=teamDense!=null?teamDense.search(actor,project,args.path("query").asText(),limit,strategy,executionFence):d.search(actor,project,args.path("query").asText(),limit,strategy); result=r;evidence=r.results();config=r.configId();
       if(r.degradedReason()!=null)limits.add("检索降级："+r.degradedReason());
       if(!r.retrievalComplete())limits.add("检索尚不完整，可能遗漏来源");
     } else {
