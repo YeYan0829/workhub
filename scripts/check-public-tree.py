@@ -23,7 +23,7 @@ DOC_FILES = {
 }
 SCRIPT_FILES = {
     'test-project-overview-ui.sh', 'verify-project-overview-ui.cjs',
-    'test-project-overview-realtime.sh', 'verify-project-overview-realtime.cjs', 'verify-overview-instance-switch.cjs', 'benchmark-project-overview.cjs', 'load-project-overview.cjs',
+    'test-project-overview-realtime.sh', 'verify-project-overview-realtime.cjs', 'verify-overview-instance-switch.cjs', 'verify-overview-under-load.cjs', 'benchmark-project-overview.cjs', 'load-project-overview.cjs',
     'admin.sh', 'bootstrap-jdk.py', 'init-env.py', 'java-env.sh', 'jdk-lock.json',
     'test-team-model.sh', 'init-team-model-test.sh', 'test-model-settings-ui.sh', 'verify-model-settings-ui.cjs', 'model-admission.py', 'mysql-init.sh', 'run-app.sh', 'run.sh', 'test-core.sh',
     'init-test-env.sh', 'init-phase1-test-db.sh', 'init-phase2-test-env.sh',

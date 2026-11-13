@@ -267,7 +267,20 @@ node scripts/verify-project-overview-realtime.cjs
 
 同一组双实例和种子还可运行 `node scripts/verify-overview-instance-switch.cjs`，沿用上述四个环境变量。脚本建立临时loopback流式代理，真实切断实例B的SSE并将重连送到实例A；普通范围读取继续经过B。三次重复检查切换后的实际状态绘制、游标单调、选择、缩放和布局保持，结果与截图写入 `OVERVIEW_REALTIME_OUTPUT`。
 
-顺序采样将每数据集首个请求单列为 `*_first_hit_ms`，再预热五次并保留正式样本。首个请求可能受操作系统和数据库缓存影响，报告应同时记录服务重启与数据恢复条件。每个 API 样本携带 `requestId`；需要判断服务端处理时间时，可在隔离环境启用 Tomcat AccessLog，记录同一个 `X-Request-Id` 和 `%{us}T` 微秒计时，再与客户端单调时钟的往返时间分别汇总。
+正常读写负载下的故障延迟可使用 `verify-overview-under-load.cjs`。将两个应用连接到独立、可恢复的夹具副本，保留原种子中的账号与项目ID，再运行：
+
+```bash
+OVERVIEW_BENCH_SEED=target/overview-benchmark/seed.json \
+OVERVIEW_LOAD_ORIGINS=http://127.0.0.1:18080,http://127.0.0.1:18081 \
+OVERVIEW_REALTIME_OUTPUT=target/overview-fault-load \
+node scripts/verify-overview-under-load.cjs
+```
+
+该脚本启动99个真实协议订阅、10项目、每秒5次计划写入的后台负载，预热120秒、采样600秒；另一个真实Chromium成员观察相同项目，正常合计100订阅。在采样窗口内重复20次正式成员撤权/恢复、20次真实连接配额503后的轮询补齐、5次浏览器断网20秒后恢复，保存每个样本、分位数、阈值超出次数、截图与录屏。轮询阶段以同一用户的3条占位连接触发配额，瞬时总连接数为102；断网阶段在线99。延迟从正式修改成功响应或恢复在线开始，到DOM满足条件并经过两个动画帧。后台每笔确认写入的观察覆盖、最终任务事实及计数继续独立核对；测量使用的任务与后台串行写入任务通过 `workload.json` 明确分开。成员操作遇到业务版本冲突时读取新版本重试并保留次数。脚本会实际修改指定项目的成员权限及任务状态，宜单独串行运行；完成后恢复成员和任务状态。
+
+浏览器性能观察使用固定CDP网络条件：时延50ms、下载10Mbps、上传5Mbps；故障脚本通过同一个CDP会话切换offline，同时保留这些网络参数，并检查浏览器实际离线状态。HTTP/SSE协议发生器保留未限速loopback条件。各自的网络参数写入结果，浏览器绘制和协议应用分别判读。
+
+顺序采样将每数据集首个请求单列为 `*_first_hit_ms`，再预热五次并保留正式样本。首个请求可能受操作系统和数据库缓存影响，报告应同时记录服务重启与数据恢复条件。每个 API 样本携带 `requestId`；需要判断服务端处理时间时，可在隔离环境启用 Tomcat AccessLog，记录同一个 `X-Request-Id` 和 `%{us}T` 微秒计时，再与客户端单调时钟的往返时间分别汇总。API阈值使用客户端往返口径，服务端计时用于解释调度、SQL与传输开销。
 
 
 并发负载可在准备夹具时增加 `WORKHUB_OVERVIEW_LOAD_FIXTURE=true`，额外创建 70 位合成读者与 50 个项目，原有数据继续保留。指定订阅数、项目数和写入速率运行：

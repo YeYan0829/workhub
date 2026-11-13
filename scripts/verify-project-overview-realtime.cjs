@@ -44,6 +44,9 @@ async function waitApplied(seqValue){await page.waitForFunction(value=>BigInt(do
  assert(await page.evaluate(()=>[...window.savedNodes].every(([id,e])=>e===document.querySelector(`[data-map-task="${id}"]`)&&e.getAttribute('style')===window.savedStyles.get(id))));
  await screenshot('02-upstream-completed');await screenshot('02-writer-task',writer);
  pass('LIVE-01','成员A完成上游，实例B的观察者自动看到解除阻塞，位置、选择、缩放与DOM保持',{crossJvm:base!==other});
+ const draft='尚未发送：请确认下游回归安排 '+Date.now();
+ await writer.locator('#comment textarea').fill(draft);
+ const draftNode=await writer.locator('#comment textarea').elementHandle();
  for(let i=0;i<12;i++){
   const value=i%2?'DONE':'TODO';await patch(t[2],{status:value});const start=performance.now();await visible(t[2],value==='DONE'?'已完成':'待办');
   samples.push({metricId:'collaboration_visible_ms',sampleValue:Math.max(0,performance.now()-start),unit:'ms',scenarioId:'two-jvm-status'});
@@ -75,6 +78,9 @@ async function waitApplied(seqValue){await page.waitForFunction(value=>BigInt(do
  await api(writerContext,base,`/projects/${p}/tasks/${t[5]}/comments/${comment.id}`,'DELETE',undefined,{'If-Match':String(comment.revision+1)});
  await page.locator('#map-new-discussion').waitFor();await page.locator('#map-new-discussion').click();assert.equal(await page.getByText(marker+'（已补充）',{exact:true}).count(),0);
  pass('LIVE-12','讨论新增、编辑和删除保留阅读DOM，成员主动更新后看到新内容');
+ assert.equal(await writer.locator('#comment textarea').inputValue(),draft);
+ assert(await draftNode.evaluate(e=>e.isConnected));
+ pass('LIVE-12-draft','任务详情中的未发送讨论草稿及输入DOM在并行概览更新、讨论增删改期间保持');
  // Rapid A→B→A selection cannot leave the inspector waiting for a discarded old response.
  let previewCaptured,releasePreview,firstPreview=true;const previewCapture=new Promise(r=>previewCaptured=r),previewGate=new Promise(r=>releasePreview=r);
  await page.route(`**/tasks/${t[5]}/preview?*`,async route=>{if(firstPreview){firstPreview=false;const response=await route.fetch();previewCaptured();await previewGate;await route.fulfill({response});}else await route.continue();});

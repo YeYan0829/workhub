@@ -119,12 +119,17 @@ async function pool(values,limit,fn){let next=0;await Promise.all(Array.from({le
   if(i<browserCount)return;const project=projects[i%projectCount];const w=new Watcher(session,project.project,snapshots.get(project.project),i,project.id);watchers.push(w);await w.open();
  });
  const tasks=new Map();for(const p of projects){const n=snapshots.get(p.project).nodes.find(n=>['TODO','IN_PROGRESS'].includes(n.status))||snapshots.get(p.project).nodes[0];tasks.set(p.project,(await writer.call(`/projects/${p.project}/tasks/${n.id}`)).data);}
+ // Setup metadata lets fault exercises choose a different task from the serial
+ // writer, preserving its revision contract while both workloads run together.
+ fs.writeFileSync(out+'/workload.json',JSON.stringify({writerTargets:projects.map(p=>({project:p.project,taskId:tasks.get(p.project).id,datasetId:p.id}))},null,2));
  if(process.env.OVERVIEW_LOAD_BROWSER==='true'){
   const {chromium}=require('playwright');browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   const observer=await new Session(seed.member,origins.at(-1)).login(),cookie=observer.cookie.split(';')[0],split=cookie.indexOf('=');
   for(let i=0;i<browserCount;i++){
    const context=await browser.newContext({viewport:{width:1440,height:1000}}),project=projects[i];
    await context.addCookies([{name:cookie.slice(0,split),value:cookie.slice(split+1),url:origins.at(-1)}]);const page=await context.newPage();
+   const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');
+   await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:50,downloadThroughput:10e6/8,uploadThroughput:5e6/8});
    await page.exposeFunction('loadPaint',d=>applied(d.project,d.seq,performance.now(),'collaboration_visible_ms','chromium-'+i));
    await page.addInitScript(()=>document.addEventListener('overview.applied',e=>{const detail=e.detail;requestAnimationFrame(()=>requestAnimationFrame(()=>window.loadPaint(detail)));}));
    await page.goto(origins.at(-1)+`/#project/${project.project}/overview`);await page.locator('[data-map-task]').first().waitFor();await page.waitForFunction(()=>!routing);
@@ -182,7 +187,7 @@ async function pool(values,limit,fn){let next=0;await Promise.all(Array.from({le
  await browser?.close();browser=undefined;await pool(watchers,20,w=>w.close());
  let expectedObservations=0;for(const [project,entries]of acknowledgments){const count=watchers.filter(w=>w.project===project).length+browserObservers.filter(o=>o.project===project).length;expectedObservations+=entries.filter(a=>a.phase==='sample').length*count;}
  const observedSamples=(metricValues.sync_client_applied_ms?.length||0)+(metricValues.collaboration_visible_ms?.length||0);
- const summary={version,condition:{subscribers,projectCount,browserObservers:browserCount,loginIpMode,writeWorkflow:'one serial task chain per project: fresh CSRF, PATCH, fresh state acknowledgment',writesPerSecond:wps,scheduledWrites,actualWrites,actualWritesPerSecond:actualWrites/elapsed,writeWorkflowErrors:windowFailedWrites,droppedQueuedWrites:droppedWrites,drainSeconds:(performance.now()-drainStart)/1000,warmupSeconds:warmup,sampleSeconds:seconds,elapsedSampleSeconds:elapsed,reconcileMillis,jvms:origins.length,apiCohort:'request started during sampling',visibleCohort:'write acknowledged during sampling until observer reaches that sequence or newer; includes drain'},observationCoverage:{expected:expectedObservations,observed:observedSamples},transportEvents,mismatchDetails,faults,lostCursors:lost,factMismatches,counterMismatches,groups:{}};
+ const summary={version,condition:{subscribers,projectCount,browserObservers:browserCount,browserNetwork:browserCount?{latencyMs:50,downloadMbps:10,uploadMbps:5}:null,protocolNetwork:'unshaped loopback HTTP/SSE',loginIpMode,writeWorkflow:'one serial task chain per project: fresh CSRF, PATCH, fresh state acknowledgment',writesPerSecond:wps,scheduledWrites,actualWrites,actualWritesPerSecond:actualWrites/elapsed,writeWorkflowErrors:windowFailedWrites,droppedQueuedWrites:droppedWrites,drainSeconds:(performance.now()-drainStart)/1000,warmupSeconds:warmup,sampleSeconds:seconds,elapsedSampleSeconds:elapsed,reconcileMillis,jvms:origins.length,apiCohort:'request started during sampling',visibleCohort:'write acknowledged during sampling until observer reaches that sequence or newer; includes drain'},observationCoverage:{expected:expectedObservations,observed:observedSamples},transportEvents,mismatchDetails,faults,lostCursors:lost,factMismatches,counterMismatches,groups:{}};
  for(const [metric,a]of Object.entries(metricValues)){a.sort((x,y)=>x-y);const p=n=>a[Math.min(a.length-1,Math.ceil(a.length*n)-1)];summary.groups[metric]={n:a.length,p50:p(.5),p95:p(.95),p99:p(.99)};}
  fs.writeFileSync(out+'/summary.json',JSON.stringify(summary,null,2));phaseEvidence('complete');console.log('complete',JSON.stringify(summary.condition),'faults',faults.length,'lost',lost);
  if(faults.length||lost||factMismatches||counterMismatches||observedSamples!==expectedObservations)process.exitCode=1;
