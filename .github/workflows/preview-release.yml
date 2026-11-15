@@ -1,0 +1,136 @@
+name: Preview package and fresh installation
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Preview version (v0.1.0-preview.1)
+        required: true
+        default: v0.1.0-preview.1
+
+concurrency:
+  group: workhub-preview-package
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate version and public source
+        run: |
+          python3 -c 'import os,re; assert re.fullmatch(r"v\d+\.\d+\.\d+-preview\.\d+",os.environ["RELEASE_VERSION"])'
+          python3 scripts/check-public-tree.py --staged
+          python3 scripts/test-public-tree.py
+      - name: Build the versioned image
+        run: |
+          docker build --progress plain \
+            --build-arg WORKHUB_VERSION="$RELEASE_VERSION" \
+            --build-arg WORKHUB_REVISION="$GITHUB_SHA" \
+            --tag "workhub:$RELEASE_VERSION" .
+      - name: Package source, image and checksums
+        run: python3 scripts/package-release.py --version "$RELEASE_VERSION"
+      - name: Upload candidate assets to a draft release
+        run: |
+          if gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft > target/current-release.json; then
+            python3 -c 'import json; assert json.load(open("target/current-release.json"))["isDraft"], "Published versions are immutable; choose a new version"'
+            gh release edit "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --notes-file target/release/release-notes.md
+          else
+            gh release create "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease \
+              --title "WorkHub $RELEASE_VERSION" --notes-file target/release/release-notes.md
+          fi
+          gh release upload "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --clobber \
+            "target/release/workhub-$RELEASE_VERSION-source.tar.gz" \
+            "target/release/workhub-$RELEASE_VERSION-linux-amd64.docker.tar.gz" \
+            target/release/release-manifest.json target/release/SHA256SUMS
+
+  fresh-install:
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      COMPOSE_PROJECT_NAME: workhub-preview-first-run
+      WORKHUB_FIRST_RUN_TEST: 'true'
+    steps:
+      - name: Download only the release assets onto a fresh runner
+        run: |
+          mkdir downloads
+          gh release download "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --dir downloads \
+            --pattern "workhub-$RELEASE_VERSION-*" --pattern release-manifest.json --pattern SHA256SUMS
+          cd downloads
+          sha256sum --check SHA256SUMS
+          tar -xzf "workhub-$RELEASE_VERSION-source.tar.gz"
+          if docker image inspect "workhub:$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo 'Application image unexpectedly present on a fresh runner'
+            exit 1
+          fi
+          docker load -i "workhub-$RELEASE_VERSION-linux-amd64.docker.tar.gz"
+          python3 - <<'PY'
+          import json,os,subprocess
+          m=json.load(open('release-manifest.json'))
+          assert m['sourceCommit']==os.environ['GITHUB_SHA']
+          image=json.loads(subprocess.check_output(['docker','image','inspect',m['image']],text=True))[0]
+          assert image['Id']==m['imageId']
+          assert image['Config']['Labels']['org.opencontainers.image.revision']==m['sourceCommit']
+          PY
+      - name: Start with a new environment and new volumes
+        working-directory: downloads/workhub-${{ inputs.version }}
+        run: |
+          python3 scripts/init-env.py --image "workhub:$RELEASE_VERSION"
+          test -z "$(docker volume ls --filter label=com.docker.compose.project=$COMPOSE_PROJECT_NAME -q)"
+          docker compose --profile app up --no-build -d --wait --wait-timeout 300
+      - name: Install the browser test tools
+        working-directory: downloads/workhub-${{ inputs.version }}
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Follow the reporting-project guide through actual forms
+        working-directory: downloads/workhub-${{ inputs.version }}
+        run: node scripts/verify-first-run.cjs seed
+      - name: Recreate the application and check persisted state
+        working-directory: downloads/workhub-${{ inputs.version }}
+        run: |
+          docker compose --profile app stop app
+          docker compose --profile app up --no-build -d --wait --wait-timeout 300 --force-recreate app
+          node scripts/verify-first-run.cjs check
+      - name: Recreate the whole stack while retaining volumes
+        working-directory: downloads/workhub-${{ inputs.version }}
+        run: |
+          docker compose --profile app down
+          docker compose --profile app up --no-build -d --wait --wait-timeout 300
+          node scripts/verify-first-run.cjs check
+      - name: Attach a sanitized installation record
+        working-directory: downloads/workhub-${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json,pathlib,subprocess,os
+          results=[json.loads(p.read_text()) for p in sorted(pathlib.Path('target/first-run').glob('*-result-*.json'))]
+          assert len(results)==3 and all(r['status']=='PASS' for r in results)
+          manifest=json.loads(pathlib.Path('../release-manifest.json').read_text())
+          data={'status':'PASS','version':manifest['version'],'sourceCommit':manifest['sourceCommit'],
+            'imageId':manifest['imageId'],'platform':manifest['platform'],
+            'downloadedFromGitHub':True,'checksumsVerified':True,'applicationImageInitiallyAbsent':True,
+            'freshVolumes':True,'guideResults':results,'modelCalls':0,'externalGithubWrites':0,
+            'workflowRun':'https://github.com/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/'+os.environ['GITHUB_RUN_ID']}
+          pathlib.Path('../installation-verification.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+          PY
+          gh release upload "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --clobber ../installation-verification.json
+      - name: Stop only this verification stack
+        if: always()
+        working-directory: downloads/workhub-${{ inputs.version }}
+        run: docker compose --profile app down

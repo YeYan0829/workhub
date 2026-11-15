@@ -15,7 +15,7 @@ ROOT_FILES = {
     'compose.yaml', 'compose.test.yaml', 'compose.conversation-test.yaml',
     'compose.governance-test.yaml', 'compose.team-model-test.yaml',
     '.mvn/jvm.config', '.mvn/maven.config', '.mvn/wrapper/maven-wrapper.properties',
-    '.github/workflows/public-tree.yml',
+    '.github/workflows/public-tree.yml', '.github/workflows/preview-release.yml',
 }
 DOC_FILES = {
     'docs/ARCHITECTURE.md', 'docs/TESTING.md', 'docs/VALIDATION.md', 'docs/GETTING_STARTED.md', 'docs/RELEASE.md',
@@ -30,7 +30,7 @@ SCRIPT_FILES = {
     'init-phase3-test-env.sh', 'init-phase3x-test-env.sh',
     'init-phase4-test-env.sh', 'init-phase4b-test-env.sh', 'init-phase5a-test-env.sh',
     'verify-automatic-triage-ui.cjs', 'verify-phase5b-ui.cjs', 'verify-w3-progress.cjs',
-    'check-public-tree.py', 'test-public-tree.py', 'verify-docker-ui.cjs', 'verify-frontend-ui.cjs', 'verify-first-run.cjs',
+    'check-public-tree.py', 'test-public-tree.py', 'verify-docker-ui.cjs', 'verify-frontend-ui.cjs', 'verify-first-run.cjs', 'package-release.py',
 }
 REQUIRED = ROOT_FILES | DOC_FILES | {'scripts/' + name for name in SCRIPT_FILES}
 FORBIDDEN_PARTS = {

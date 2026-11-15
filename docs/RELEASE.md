@@ -12,6 +12,7 @@
 | `workhub-v0.1.0-preview.1-linux-amd64.docker.tar.gz` | 已构建的应用镜像 |
 | `release-manifest.json` | 源码 commit、镜像 ID、平台、版本与附件校验信息 |
 | `SHA256SUMS` | 下载文件的 SHA-256 校验清单 |
+| `installation-verification.json`（选读） | 独立运行器从下载、安装到容器重建的数据保留验收 |
 
 在下载目录中放置这些文件，Linux/WSL 执行：
 
