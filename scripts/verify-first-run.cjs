@@ -129,7 +129,7 @@ async function verification(email) {
       await page.locator('#linkDocument > button').click();
       await page.locator('#links').getByRole('link',{name:documentTitle, exact:true}).waitFor();
       await page.locator('#comment textarea').fill(discussion); await page.locator('#comment > button').click();
-      await page.getByText(discussion,{exact:true}).waitFor();
+      await page.locator('#comment-items .comment-body').filter({hasText:discussion}).waitFor();
       pass('create, link and read the release checklist and discussion');
       await overview();
       assert((await page.locator(`[data-map-task="${state.tasks[3]}"]`).innerText()).includes('等待上游'));
@@ -155,10 +155,11 @@ async function verification(email) {
       const me = await context.request.get(base + '/session/me'); assert(me.ok());
       assert.equal((await me.json()).userId,state.userId);
       await taskPage(5);
-      await page.getByText(discussion,{exact:true}).waitFor();
+      await page.locator('#comment-items .comment-body').filter({hasText:discussion}).waitFor();
       await page.locator('#links').getByRole('link',{name:documentTitle,exact:true}).waitFor();
       await page.goto(base + `/#document/${state.project}/${state.document}`);
-      await page.getByText(documentBody,{exact:true}).waitFor();
+      await page.locator('#document-body').waitFor();
+      assert.equal(await page.locator('#document-body').innerText(),documentBody);
       await overview();
       assert.equal(await page.locator('[data-map-task]').count(),8);
       assert((await page.locator(`[data-map-task="${state.tasks[3]}"]`).innerText()).includes('可推进'));
