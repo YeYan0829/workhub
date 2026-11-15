@@ -10,6 +10,13 @@ COPY docker/Healthcheck.java /tmp/Healthcheck.java
 RUN javac --release 17 -d /tmp/healthcheck /tmp/Healthcheck.java
 
 FROM eclipse-temurin:17-jre-jammy@sha256:2a9eb226abb654c9d1f91b53cf638d20cb3abb726d1b18a67909c29515545469 AS runtime
+ARG WORKHUB_VERSION=dev
+ARG WORKHUB_REVISION=unknown
+LABEL org.opencontainers.image.title="WorkHub" \
+      org.opencontainers.image.source="https://github.com/YeYan0829/workhub" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${WORKHUB_VERSION}" \
+      org.opencontainers.image.revision="${WORKHUB_REVISION}"
 RUN groupadd --gid 10001 workhub \
     && useradd --uid 10001 --gid workhub --no-create-home --home-dir /opt/workhub workhub \
     && mkdir -p /opt/workhub /var/lib/workhub \
@@ -17,6 +24,7 @@ RUN groupadd --gid 10001 workhub \
 WORKDIR /opt/workhub
 COPY --from=build /workspace/target/workhub-0.0.1.jar ./workhub.jar
 COPY --from=build /tmp/healthcheck ./healthcheck
+COPY LICENSE ./LICENSE
 USER 10001:10001
 ENV SERVER_ADDRESS=0.0.0.0 APP_PORT=8080 WORKHUB_MAIL_KEY_FILE=/var/lib/workhub/mail.key
 EXPOSE 8080

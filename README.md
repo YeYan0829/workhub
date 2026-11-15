@@ -1,6 +1,12 @@
 # WorkHub
 
-WorkHub 是一个支持多个团队开展工作的任务协作平台，帮助团队管理繁杂的任务及其依赖，梳理当前进展、识别阻塞，并规划后续工作。成员在团队内组织项目，把需求、缺陷、外部反馈和相关资料纳入工作安排，通过个人工作台关注自己参与的任务与通知。
+WorkHub 是面向多个团队的项目协作与知识检索平台。它把任务、前后置依赖、讨论、文档和 GitHub Issue 组织到项目中，帮助成员看清进展与阻塞，并通过带原文引用的项目助手了解背景、安排下一步。
+
+你可以用它完成三件事：从依赖图找出发布卡在哪里；多人协作时自动看到任务与关系变化；让助手结合任务事实和项目资料回答问题，再打开引用核查。
+
+[预览版镜像安装](docs/RELEASE.md) · [源码启动](#本地运行) · [首次体验与模型接入](docs/GETTING_STARTED.md) · [性能与可靠性实验](docs/VALIDATION.md)
+
+默认 Docker 环境即可体验任务、依赖、讨论、文档和实时协作。项目助手、语义检索与 GitHub 同步按需接入团队自己的模型服务和仓库。
 
 ## 产品演示
 
@@ -49,7 +55,9 @@ WorkHub 是一个支持多个团队开展工作的任务协作平台，帮助团
 
 ## 本地运行
 
-准备好 Docker Compose 和 Python 3，在仓库根目录执行：
+直接使用已构建镜像，见 [v0.1.0-preview.1 下载与安装](docs/RELEASE.md)。以下为源码构建方式：
+
+准备好 Docker Compose v2、BuildKit 和 Python 3，在仓库根目录执行：
 
 ```bash
 python3 scripts/init-env.py
@@ -63,6 +71,14 @@ docker compose --profile app up --build -d --wait --wait-timeout 300
 3. 登录后创建团队和项目，添加任务、上游依赖、文档和讨论。邀请其他账号加入团队后，再授予项目访问权。
 
 该命令会启动 WorkHub、MySQL、RabbitMQ 和 Mailpit。完成注册后即可使用任务、依赖、讨论和文档；项目助手与 GitHub 同步按下方的可选接入说明配置。
+
+首次环境从空团队开始。[首次体验指南](docs/GETTING_STARTED.md)提供“报表发布”的任务与依赖清单，可以按截图场景走一遍创建、查看阻塞、修改和实时同步。
+
+已有应用镜像时，通过 `python3 scripts/init-env.py --image 镜像标签` 保存镜像选择，再使用以下命令启动；下载与校验步骤见[预览版安装](docs/RELEASE.md)。
+
+```bash
+docker compose --profile app up --no-build -d --wait --wait-timeout 300
+```
 
 ```bash
 docker compose --profile app logs -f app          # 查看应用日志
@@ -88,7 +104,21 @@ docker compose --profile app down                 # 停止并移除容器，保�
 
 部署者提供模型加密主密钥，并为首次配置的团队初始化 Redis 配额域。配置和恢复步骤见[团队模型治理](docs/ARCHITECTURE.md#团队模型治理-api)。
 
-配置项见 [.env.example](.env.example)。GitHub 预授权命令、私钥挂载及宿主机开发方式见[架构与运行说明](docs/ARCHITECTURE.md)。
+第一次接入时，可按[首次体验指南](docs/GETTING_STARTED.md)依次完成“启动模型依赖 → 团队连接 → 配额初始化 → 项目策略 → 提问与引用核对 → 可选向量索引”。
+
+配置项见 [.env.example](.env.example)。GitHub 预授权命令、集成机制及宿主机开发方式见[架构与运行说明](docs/ARCHITECTURE.md)。
+
+## 工程实现与验证
+
+| 场景 | 实现与已测结果 |
+|---|---|
+| Issue 同步、索引等后台工作需要失败恢复 | 业务修改与待发布消息同事务保存，发布确认、消费去重与失败恢复配合；32 条消息发布确认的三轮中位耗时约 16 秒降至 1.45 秒 |
+| 多个项目与应用实例共享模型服务 | Redis 与 Lua 统一调用速率、冷却和故障状态；双实例三轮受控对照中，两方案各 36 次调用，供应商限流响应由 13 次降至 0 次 |
+| 大项目概览需要控制读取与传输开销 | 局部图、批量查询与事务计数；万级任务同条件三轮对照，概览接口 P95 约 96–123ms 降至 27–33ms，首屏 JSON 减少 65.3% |
+| 成员需要看到其他人的进展 | SSE 提示变化、按当前范围同步与断线补齐；100 订阅、10 项目、约 5 次成功写入/秒时，浏览器更新可见 P95 为 0.81–0.86 秒 |
+| 助手需要查到可靠背景资料 | 结构化业务查询与资料检索结合，回答可展开原文引用；固定 40 题历史技术资料对照中，向量 Recall@10 为 92.5%，关键词基线 73.75% |
+
+完整的[性能与可靠性实验报告](docs/VALIDATION.md)从业务场景讲起，说明测试数据如何生成、175 轮实验怎样安排，以及接口耗时、页面更新和容量数据如何解读；同时记录集中观看的成本、内存校准进展和 Docker 交付结果。
 
 ## 开发与验证
 
@@ -101,6 +131,13 @@ scripts/run.sh test  # 需要 Java 17
 ```
 
 - [架构、核心流程与运行方式](docs/ARCHITECTURE.md)
+- [预览版下载、校验与镜像安装](docs/RELEASE.md)
+- [首次体验、镜像启动与模型接入](docs/GETTING_STARTED.md)
 - [集成测试、浏览器回归与环境准备](docs/TESTING.md)
+- [性能与可靠性实验报告](docs/VALIDATION.md)
 
 `main` 保持稳定可运行，开发使用短期分支，验证后合入；展示版本用 tag 标记。提交前检查公开文件范围，暂存后运行 `python3 scripts/check-public-tree.py --staged`。
+
+## 许可
+
+[MIT License](LICENSE)。

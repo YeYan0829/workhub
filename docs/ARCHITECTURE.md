@@ -22,7 +22,7 @@ MySQL 保存业务、权限、会话、工作状态和模型用量记录；Rabbi
 
 ## 容器运行
 
-[Dockerfile](../Dockerfile) 使用固定摘要的 Maven/Java 17 构建镜像和 Java 17 JRE 运行镜像。构建上下文由 [.dockerignore](../.dockerignore) 限定为应用源码、构建配置和探针源码；本机 JAR、凭据、文档及测试输出不进入构建。镜像以 UID/GID 10001 运行，Java 进程直接接收停止信号。
+[Dockerfile](../Dockerfile) 使用固定摘要的 Maven/Java 17 构建镜像和 Java 17 JRE 运行镜像。构建上下文由 [.dockerignore](../.dockerignore) 限定为应用源码、构建配置、探针源码与许可文件；本机 JAR、凭据、文档及测试输出不进入构建。镜像以 UID/GID 10001 运行，包含 MIT 许可，Java 进程直接接收停止信号。
 
 Compose 的 `app` profile 启动应用与基础中间件；应用等待数据库和 RabbitMQ 健康后启动，Flyway 执行迁移。容器内使用服务名和内部端口连接，外部端口保持 loopback 绑定。默认 `async` profile 保留宿主机开发方式，检索和共享模型准入分别使用额外 profile。
 

@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
 
 ROOT_FILES = {
-    '.env.example', '.gitattributes', '.gitignore', 'README.md', 'pom.xml',
+    '.env.example', '.gitattributes', '.gitignore', 'README.md', 'LICENSE', 'pom.xml',
     'Dockerfile', '.dockerignore', 'docker/Healthcheck.java',
     'mvnw', 'mvnw.cmd', 'package.json', 'package-lock.json',
     'compose.yaml', 'compose.test.yaml', 'compose.conversation-test.yaml',
@@ -18,7 +18,7 @@ ROOT_FILES = {
     '.github/workflows/public-tree.yml',
 }
 DOC_FILES = {
-    'docs/ARCHITECTURE.md', 'docs/TESTING.md',
+    'docs/ARCHITECTURE.md', 'docs/TESTING.md', 'docs/VALIDATION.md', 'docs/GETTING_STARTED.md', 'docs/RELEASE.md',
     'docs/assets/project-overview.png', 'docs/assets/project-task.png', 'docs/assets/project-collaboration.png', 'docs/assets/model-settings.png',
 }
 SCRIPT_FILES = {
@@ -30,7 +30,7 @@ SCRIPT_FILES = {
     'init-phase3-test-env.sh', 'init-phase3x-test-env.sh',
     'init-phase4-test-env.sh', 'init-phase4b-test-env.sh', 'init-phase5a-test-env.sh',
     'verify-automatic-triage-ui.cjs', 'verify-phase5b-ui.cjs', 'verify-w3-progress.cjs',
-    'check-public-tree.py', 'test-public-tree.py', 'verify-docker-ui.cjs', 'verify-frontend-ui.cjs',
+    'check-public-tree.py', 'test-public-tree.py', 'verify-docker-ui.cjs', 'verify-frontend-ui.cjs', 'verify-first-run.cjs',
 }
 REQUIRED = ROOT_FILES | DOC_FILES | {'scripts/' + name for name in SCRIPT_FILES}
 FORBIDDEN_PARTS = {

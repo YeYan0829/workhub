@@ -3,6 +3,7 @@
 !Dockerfile
 !.dockerignore
 !pom.xml
+!LICENSE
 !.mvn/
 .mvn/**
 !.mvn/jvm.config

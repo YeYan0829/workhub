@@ -169,12 +169,17 @@ async function pool(values,limit,fn){let next=0;await Promise.all(Array.from({le
  let lost=0,factMismatches=0,counterMismatches=0;const mismatchDetails=[];
  if(version==='B1'){
   const canonical=new Map();writer.csrf=(await writer.call('/session/csrf')).data;for(const p of projects)canonical.set(p.project,(await writer.call(`/projects/${p.project}/graph/view`,'POST',{nodeIds:snapshots.get(p.project).nodes.map(n=>n.id)})).data);
-  const deadline=performance.now()+10000;
+ const paintTargets=new Map([...acknowledgments].map(([project,entries])=>[project,entries.filter(a=>a.phase==='sample').at(-1)?.seq]));
+ const deadline=performance.now()+10000;let pendingPaint=0;
   do{
    lost=watchers.filter(w=>w.seq!==canonical.get(w.project).viewSeq).length;
    for(const observer of browserObservers){const value=await observer.page.evaluate(()=>document.querySelector('#panel')?.overviewState?.().appliedSeq);if(value!==canonical.get(observer.project).viewSeq)lost++;}
-   if(!lost||performance.now()>=deadline)break;await sleep(100);
+   // appliedSeq advances before the two-frame visibility callback. Keep the page
+   // alive until acknowledged sample writes have actual visibility reports too.
+   pendingPaint=browserObservers.filter((o,i)=>{const target=paintTargets.get(o.project),observed=observers.get(o.project+':collaboration_visible_ms:chromium-'+i);return target!==undefined&&(!observed||observed.seq<target);}).length;
+   if(!lost&&!pendingPaint||performance.now()>=deadline)break;await sleep(100);
   }while(running);
+ fs.writeFileSync(out+'/observation-drain.json',JSON.stringify({lostCursors:lost,pendingPaint,deadlineExceeded:performance.now()>=deadline,secondsAfterWritesStopped:(performance.now()-drainStart)/1000},null,2));
   const nodeFacts=n=>{const {visibleUpstreamCount,visibleDownstreamCount,...facts}=n;return JSON.stringify(facts);};
   for(const w of watchers){const value=canonical.get(w.project),expected=new Map(value.nodes.map(n=>[n.id,n]));if(w.seq!==value.viewSeq)mismatchDetails.push({kind:'cursor',client:w.index,project:w.project,applied:w.seq,seen:String(w.seen),expected:value.viewSeq,streaming:w.streaming});if(JSON.stringify(w.counts)!==JSON.stringify(value.counts)){counterMismatches++;mismatchDetails.push({kind:'counts',client:w.index,project:w.project,actual:w.counts,expected:value.counts});}for(const id of w.ids)if(!w.nodes.has(id)||!expected.has(id)||nodeFacts(w.nodes.get(id))!==nodeFacts(expected.get(id))){factMismatches++;mismatchDetails.push({kind:'node',client:w.index,project:w.project,id,actual:w.nodes.get(id),expected:expected.get(id)});}}
   for(const observer of browserObservers){
