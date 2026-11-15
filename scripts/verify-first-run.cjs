@@ -31,11 +31,11 @@ async function verification(email) {
   const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
     const response = await fetch(mail + '/api/v1/messages', {signal:AbortSignal.timeout(5000)});
-    assert(response.ok());
+    assert(response.ok);
     for (const m of (await response.json()).messages || []) {
       if (!(m.To || []).some(to => to.Address === email)) continue;
       const r = await fetch(mail + '/api/v1/message/' + m.ID, {signal:AbortSignal.timeout(5000)});
-      assert(r.ok());
+      assert(r.ok);
       const link = (await r.json()).Text?.match(/https?:\/\/[^\s<>]+\/#verify\/[A-Za-z0-9_-]+/)?.[0];
       if (link) { assert.equal(new URL(link).origin, base); return link; }
     }
