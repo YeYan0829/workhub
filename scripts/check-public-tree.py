@@ -20,6 +20,7 @@ ROOT_FILES = {
 DOC_FILES = {
     'docs/ARCHITECTURE.md', 'docs/TESTING.md', 'docs/VALIDATION.md', 'docs/GETTING_STARTED.md', 'docs/RELEASE.md',
     'docs/assets/project-overview.png', 'docs/assets/project-task.png', 'docs/assets/project-collaboration.png', 'docs/assets/model-settings.png',
+    'docs/assets/project-assistant.png', 'docs/assets/feedback-request.png', 'docs/assets/feedback-triage.png',
 }
 SCRIPT_FILES = {
     'test-project-overview-ui.sh', 'verify-project-overview-ui.cjs',

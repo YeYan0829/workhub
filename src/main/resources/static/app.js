@@ -1099,7 +1099,6 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
       const factIds=[...new Set(result.answer.claims.flatMap(c=>c.citations).filter(id=>sources.get(id)?.kind==="FACT"))];
       const shownTasks=new Set();
       const readObjects=[...new Set(result.sources.filter(s=>s.evidence||s.toolName==="get_task").map(s=>s.data?.taskTitle?`${s.data.taskTitle}的评论`:s.title).filter(Boolean))];
-      const sourceKinds={TASK:"任务描述",COMMENT:"历史评论",DOCUMENT:"文档",GITHUB_ISSUE:"Issue",GITHUB_COMMENT:"外部评论"};
       $("#agent-answer").innerHTML = `<h2>助手回答</h2>` +
         result.answer.claims.map(c=>`<article class="agent-claim">${c.kind==="ANSWER"?"":`<strong>${esc(c.kind==="FACT"?"当前情况":labels[c.kind]||c.kind)}</strong>`}<p>${esc(c.text)} ${[...new Set(c.citations)].map(id=>numbers.has(id)?`<button type="button" class="citation-marker" data-source-number="${numbers.get(id)}" aria-label="查看引用 ${numbers.get(id)}" aria-controls="agent-source-${numbers.get(id)}">[${numbers.get(id)}]</button>`:"").join(" ")}</p>${c.kind==="UNKNOWN"?`<p class="muted">此项证据不足，不能据此作出确定结论。</p>`:""}</article>`).join("") +
         (factIds.length?`<article class="agent-facts"><strong>当前事实</strong><p class="muted">以下是回答生成时读取的任务信息；打开任务可查看最新状态。</p>${factIds.map(id=>sources.has(id)?currentFacts(sources.get(id),shownTasks):"").join("")}</article>`:"") +
@@ -1107,9 +1106,7 @@ async function projectPage(p, tab, params = new URLSearchParams()) {
         `<p class="muted">已读取对象：${readObjects.map(esc).join("、")||"暂无"}</p><p class="muted">已查询：${[...new Set(result.tools)].map(t=>esc(toolLabels[t]||"项目资料")).join("、")} · ${(result.elapsedMillis/1000).toFixed(1)}秒</p>` +
         (selectedIds.length?`<details class="agent-sources"><summary>核对来源</summary>${selectedIds.map(id=>{
           const s=sources.get(id),n=numbers.get(id);
-          const type=s.toolName==="read_github_resource"?"GitHub 同步原文":s.evidence?(sourceKinds[s.evidence.kind]||s.evidence.kind):"实时业务查询";
-          const snippet=s.evidence?s.evidence.text:s.toolName==="read_github_resource"?s.data.text:null;
-          return `<article id="agent-source-${n}" tabindex="-1"><strong>[${n}] ${esc(type)}</strong><p>${sourceLink(s)}</p><p class="muted">读取于 ${esc(timeLabel(s.observedAt))} · ${s.evidence ? "已核对来源版本，可打开原文查看上下文" : "回答生成时的业务记录"}</p>${s.evidence?.kind==="COMMENT"?`<p class="muted">${esc(s.data?.taskTitle||"所属任务")} · ${esc(s.data?.authorDisplayName||"作者未提供")} · 创建于 ${esc(s.data?.createdAt||"时间未提供")}。评论片段是历史陈述；链接打开所属任务。</p>`:""}${s.toolName==="read_github_resource"?`<p class="muted">同步确认于 ${esc(s.data.confirmedAt||"未知")} · 字符 ${s.data.range.start}–${s.data.range.end} / ${s.data.range.totalCharacters}。这是已同步资料，不代表实时远端状态。</p>`:""}${snippet!==null?`<pre class="agent-evidence">${esc(snippet)}</pre>`:currentFacts(s,new Set())}</article>`;
+          return `<article class="agent-source-card" id="agent-source-${n}" tabindex="-1"><strong>[${n}] ${esc(agentSourceType(s))}</strong><p>${sourceLink(s)}</p>${agentSourceBody(s,p,members)}<p class="muted source-observed">读取于 ${esc(timeLabel(s.observedAt))}</p></article>`;
         }).join("")}</details>`:`<p class="muted">本次回答没有选用可核对的来源。</p>`);
       $("#agent-answer").querySelectorAll(".citation-marker").forEach(button=>button.addEventListener("click",async()=>{
         button.disabled=true;
@@ -2134,7 +2131,7 @@ async function triageProposalPanel(area, p, task, members, writable) {
         ['截止日期',esc(before.dueDate || '无'),esc(f.dueDate || '无')]]) +
       '<h4>分析依据（模型建议，需核对）</h4>' + c.analysis.claims.map(x => `<p>${esc(x.text)} ${x.citations.map(id => `[依据 ${cited.indexOf(id)+1}]`).join(' ')}</p>`).join('') +
       cited.map((id,i) => {const s=sources.get(id);if(!s)return '';const match=(s.url||'').match(/^\/projects\/([0-9a-f-]{36})\/(tasks|documents)\/([0-9a-f-]{36})/);
-        return `<details><summary>依据 ${i+1} · ${esc(s.title)}</summary>${match && match[1]===p ? link(`${match[2]==='tasks'?'task':'document'}/${p}/${match[3]}`,'打开来源') : ''}<p class="comment-body">${esc(s.evidence?.text || JSON.stringify(s.data))}</p></details>`;}).join('') +
+        return `<details class="agent-source-card"><summary>依据 ${i+1} · ${esc(agentSourceType(s))} · ${esc(s.title)}</summary>${match && match[1]===p ? link(`${match[2]==='tasks'?'task':'document'}/${p}/${match[3]}`,'打开来源') : ''}${agentSourceBody(s,p,members)}<p class="muted source-observed">读取于 ${esc(timeLabel(s.observedAt))}</p></details>`;}).join('') +
       `<p>本版本说明：${esc(f.rationale)}</p>` +
       (v.result ? `<div id="triage-result"><h4>实际执行结果</h4><p>${esc(stateName(v.result.status))} · ${esc(label(v.result.type))} · P${v.result.priority} · ${esc(owner(v.result.assigneeId))} · 截止 ${esc(v.result.dueDate || '无')} · 任务版本 ${v.result.revision}</p>${link(`task/${p}/${task.id}`,'查看任务')}<button id="triage-refresh-task">刷新任务详情</button></div>` : '') +
       (writable && ['UNAPPROVED','FAILED'].includes(v.status) ?
@@ -2220,6 +2217,55 @@ async function triageProposalPanel(area, p, task, members, writable) {
 
 }
 
+// Render the saved observation, so opening a citation shows the data used by this answer.
+function agentSourceType(source) {
+  if(source.kind==='HISTORY_MESSAGE')return '历史对话';
+  if(source.evidence)return ({TASK:'任务描述',DOCUMENT:'文档原文',COMMENT:'任务讨论',GITHUB_COMMENT:'GitHub 评论',GITHUB_ISSUE:'GitHub Issue 原文'})[source.evidence.kind]||'正文片段';
+  return ({get_task:'任务信息',get_direct_blockers:'当前阻塞',list_tasks:'任务查询',get_project_summary:'项目概况',get_dependency_path:'依赖路径',get_linked_resources:'关联资料',get_sync_intent:'GitHub 同步状态',read_github_resource:'GitHub 同步原文'})[source.toolName]||'业务查询';
+}
+function agentSourceBody(source, projectId, members=[]) {
+  const data=source.data||{}, uuid=/^[0-9a-f-]{36}$/i;
+  const projectLink=(kind,id,title)=>uuid.test(projectId)&&uuid.test(id)?link(`${kind}/${projectId}/${id}?${new URLSearchParams({from:location.hash.slice(1)})}`,title):esc(title);
+  const owner=task=>task.assigneeDisplayName||(!task.assigneeId?'未分配':members.find(m=>m.id===task.assigneeId)?.displayName||'成员姓名未记录');
+  const priority=task=>task.triageRequired?'待分诊确认':task.priority==null?'未记录':`P${task.priority}${task.priorityLabel?' · '+task.priorityLabel:''}`;
+  const facts=rows=>`<dl class="source-facts">${rows.map(([key,value])=>`<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`;
+  const tasks=rows=>`<ul class="source-records">${rows.map(task=>`<li>${projectLink('task',task.id,task.title||'查看任务')}<span>${esc(owner(task))} · ${esc(stateName(task.status)||'状态未记录')} · ${esc(priority(task))}</span></li>`).join('')}</ul>`;
+  const pageNote=()=>data.hasMore?'<p class="source-query-note">还有后续结果，本条展示已读取的这一页。</p>':data.complete===true&&!source.arguments?.offset?'<p class="source-query-note">本次查询结果已读完。</p>':'';
+  if(source.kind==='HISTORY_MESSAGE')return `<p>引用第 ${esc(data.turn)} 轮保存的对话，可回看当时的提问与回答。</p>`;
+  if(source.evidence) {
+    const evidence=source.evidence;
+    const author=evidence.kind==='COMMENT'?`<p class="source-query-note">${esc(data.taskTitle||'所属任务')} · ${esc(data.authorDisplayName||'作者未记录')}${data.createdAt?' · '+esc(timeLabel(data.createdAt)):''}</p>`:'';
+    return author+`<pre class="agent-evidence">${esc(evidence.text)}</pre>`;
+  }
+  switch(source.toolName) {
+    case 'get_task': {
+      const rows=[['负责人',owner(data)],['状态',stateName(data.status)||'未记录'],['优先级',priority(data)]];
+      if(typeof data.isBlocked==='boolean')rows.push(['依赖',data.isBlocked?'等待上游任务':'无上游阻塞']);
+      if(data.dueDate)rows.push(['截止日期',data.dueDate]);
+      return facts(rows);
+    }
+    case 'get_direct_blockers':return (data.blockers?.length?'<p class="source-query-note">正在等待以下上游任务：</p>'+tasks(data.blockers):'<p>本页没有未完成的上游任务。</p>')+pageNote();
+    case 'list_tasks':return (data.items?.length?tasks(data.items):'<p>本页没有匹配的任务。</p>')+pageNote();
+    case 'get_project_summary': {
+      const counts=Array.isArray(data.statusCounts)?data.statusCounts.map(row=>[stateName(row.status),row.count]):Object.entries(data.statusCounts||{}).map(([status,count])=>[stateName(status),count]);
+      return counts.length?facts(counts):'<p>打开项目查看概况。</p>';
+    }
+    case 'get_dependency_path': {
+      const path=data.path||[],nodes=new Map((data.nodes||[]).map(task=>[task.id,task]));
+      return path.length?`<p class="source-query-note">从上游到下游：</p><p class="source-path">${path.map(id=>projectLink('task',id,nodes.get(id)?.title||'查看任务')).join(' → ')}</p>`:'<p>本次查询未找到两项任务之间的依赖路径。</p>';
+    }
+    case 'get_linked_resources': {
+      const documents=data.links?.documents||[],resources=data.links?.resources||[];
+      const rows=documents.map(doc=>typeof doc==='string'?projectLink('document',doc,'关联文档'):projectLink('document',doc.objectId||doc.id,doc.title||'关联文档'));
+      for(const resource of resources)rows.push(/^https?:\/\//i.test(resource.url||'')?`<a href="${esc(resource.url)}" target="_blank" rel="noopener noreferrer">${esc(resource.title||resource.url)}</a>`:esc(resource.title||'关联资料'));
+      return (rows.length?`<ul class="source-records">${rows.map(row=>`<li>${row}</li>`).join('')}</ul>`:'<p>本页没有关联资料。</p>')+pageNote();
+    }
+    case 'read_github_resource':return `<pre class="agent-evidence">${esc(data.text||'')}</pre>`+(data.confirmedAt?`<p class="source-query-note">同步确认于 ${esc(timeLabel(data.confirmedAt))}</p>`:'');
+    case 'get_sync_intent':return facts([['同步状态',label(data.status)],['最近确认',data.confirmedAt&&data.confirmedAt!=='unknown'?timeLabel(data.confirmedAt):'尚无确认记录'],['待处理修改',data.pending?.state?label(data.pending.state):'无']]);
+    default:return '<p>打开来源查看已读取的资料。</p>';
+  }
+}
+
 // Private continuous assistant. Server history is authoritative; sessionStorage holds drafts/unsent intent only.
 async function conversationPage(root, projectId, params) {
   stopConversation();
@@ -2274,7 +2320,7 @@ async function conversationPage(root, projectId, params) {
       const result=t.result, sources=result?.sources||[], numbers=new Map(sources.map((s,i)=>[s.id,i+1]));
       const answer=result?.answer?.claims.map(c=>`<p class="chat-paragraph">${c.kind==='CLARIFICATION'?'<strong>需要澄清：</strong>':''}${esc(c.text)} ${c.citations.map(id=>numbers.has(id)?`<button class="citation-marker" data-turn="${t.seq}" data-citation="${numbers.get(id)}" aria-label="查看第 ${t.seq} 轮引用 ${numbers.get(id)}">[${numbers.get(id)}]</button>`:'').join(' ')}</p>`).join('');
       const live=current.activeTurnId===t.id;
-      return `<article class="conversation-turn" id="turn-${t.seq}" tabindex="-1"><div class="chat-user"><strong>你</strong><p>${esc(t.text)}</p></div><div class="chat-assistant"><strong>项目助手</strong><p class="muted">${esc(timeLabel(t.createdAt))}${t.sourceState==='CHANGED'?' · 历史依据已变化，请以最新来源为准':''}</p>${live?'<p data-active-progress>正在查证项目资料…</p>':t.sourceState==='UNAVAILABLE'?'<p>来源已删除或不可访问，受影响的历史回答已隐藏。</p>':answer||`<p class="error">${esc(localError(t))}</p>`}${!live&&['FAILED','STALE','CANCELED'].includes(t.status)&&t.seq===current.lastSeq?`<button data-retry="${t.id}" class="secondary">重试本轮</button>`:''}${sources.length?`<details class="agent-sources"><summary>核对来源（${sources.length}）</summary>${sources.map((s,i)=>`<article id="turn-${t.seq}-source-${i+1}" tabindex="-1"><strong>[${i+1}] ${sourceLink(s,t,i+1)}</strong><p class="muted">${s.kind==='HISTORY_MESSAGE'?'历史对话，非当前业务依据':'读取于 '+esc(timeLabel(s.observedAt))}</p>${s.evidence?.text?`<pre class="agent-evidence">${esc(s.evidence.text)}</pre>`:''}</article>`).join('')}</details>`:''}</div></article>`;
+      return `<article class="conversation-turn" id="turn-${t.seq}" tabindex="-1"><div class="chat-user"><strong>你</strong><p>${esc(t.text)}</p></div><div class="chat-assistant"><strong>项目助手</strong><p class="muted">${esc(timeLabel(t.createdAt))}${t.sourceState==='CHANGED'?' · 历史依据已变化，请以最新来源为准':''}</p>${live?'<p data-active-progress>正在查证项目资料…</p>':t.sourceState==='UNAVAILABLE'?'<p>来源已删除或不可访问，受影响的历史回答已隐藏。</p>':answer||`<p class="error">${esc(localError(t))}</p>`}${!live&&['FAILED','STALE','CANCELED'].includes(t.status)&&t.seq===current.lastSeq?`<button data-retry="${t.id}" class="secondary">重试本轮</button>`:''}${sources.length?`<details class="agent-sources"><summary>核对来源（${sources.length}）</summary>${sources.map((s,i)=>`<article class="agent-source-card" id="turn-${t.seq}-source-${i+1}" tabindex="-1"><strong>[${i+1}] ${esc(agentSourceType(s))}</strong><div class="source-title">${sourceLink(s,t,i+1)}</div>${agentSourceBody(s,current.projectId)}<p class="muted source-observed">${s.kind==='HISTORY_MESSAGE'?'历史对话记录':'读取于 '+esc(timeLabel(s.observedAt))}</p></article>`).join('')}</details>`:''}</div></article>`;
     }).join(''):'<p class="conversation-empty">暂无消息</p>';
     el('#conversation-older').hidden=!nextBefore;el('#conversation-latest').hidden=!current||!messages.length||messages[messages.length-1].seq===current.lastSeq;syncCompose();
     if(current){

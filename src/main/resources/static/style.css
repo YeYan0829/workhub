@@ -474,6 +474,16 @@ mark { background: #fff0ae; color: inherit; }
 .question-suggestions { margin-bottom: 20px; }
 .agent-claim { padding: 16px 20px; margin: 12px 0; background: white; border: 1px solid #dce3e9; border-radius: 8px; }
 .agent-sources article { border-bottom: 1px solid #dce3e9; padding: 18px 0; scroll-margin: 60px; }
+.agent-source-card { overflow-wrap: anywhere; }
+.agent-source-card .source-title { margin: 4px 0 8px; }
+.source-facts { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 3px 12px; margin: 8px 0; font-size: 13px; }
+.source-facts dt { color: #667b89; }
+.source-facts dd { margin: 0; }
+.source-records { list-style: none; margin: 8px 0; padding: 0; font-size: 13px; }
+.source-records li { margin: 6px 0; }
+.source-records li > span { display: block; margin-top: 3px; color: #536673; }
+.agent-source-card .source-query-note, .agent-source-card .source-observed { margin: 6px 0; color: #667b89; font-size: 11px; }
+.agent-source-card .agent-evidence { margin: 8px 0; }
 .task-heading-actions a { align-self: center; font-weight: 650; }
 @media(max-width: 600px) { .project-stats { grid-template-columns: repeat(2,minmax(0,1fr)); } .project-stats a { padding: 12px; } }
 

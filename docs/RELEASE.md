@@ -1,15 +1,17 @@
 # 预览版下载与安装
 
-版本：`v0.1.0-preview.1`。镜像平台：`linux/amd64`。许可：MIT。
+版本：`v0.1.0-preview.2`。镜像平台：`linux/amd64`。许可：MIT。
 
-[版本与下载页面](https://github.com/YeYan0829/workhub/releases/tag/v0.1.0-preview.1)提供已构建的应用镜像与配套源码。安装使用 Docker Compose v2 和 Python 3，应用直接从镜像运行。
+本版完善项目助手的引用卡片，直接显示阻塞任务、负责人、状态与原文片段，并补齐自然问答和反馈分诊的演示材料。源码、镜像与以下安装指南对应同一版本。
+
+[版本与下载页面](https://github.com/YeYan0829/workhub/releases/tag/v0.1.0-preview.2)提供已构建的应用镜像与配套源码。安装使用 Docker Compose v2 和 Python 3，应用直接从镜像运行。
 
 ## 下载哪些文件
 
 | 附件 | 用途 |
 |---|---|
-| `workhub-v0.1.0-preview.1-source.tar.gz` | 同版本 Compose、配置、使用指南及完整源码 |
-| `workhub-v0.1.0-preview.1-linux-amd64.docker.tar.gz` | 已构建的应用镜像 |
+| `workhub-v0.1.0-preview.2-source.tar.gz` | 同版本 Compose、配置、使用指南及完整源码 |
+| `workhub-v0.1.0-preview.2-linux-amd64.docker.tar.gz` | 已构建的应用镜像 |
 | `release-manifest.json` | 源码 commit、镜像 ID、平台、版本与附件校验信息 |
 | `SHA256SUMS` | 下载文件的 SHA-256 校验清单 |
 | `installation-verification.json`（选读） | 独立运行器从下载、安装到容器重建的数据保留验收 |
@@ -18,10 +20,10 @@
 
 ```bash
 sha256sum --check SHA256SUMS
-tar -xzf workhub-v0.1.0-preview.1-source.tar.gz
-docker load -i workhub-v0.1.0-preview.1-linux-amd64.docker.tar.gz
-cd workhub-v0.1.0-preview.1
-python3 scripts/init-env.py --image workhub:v0.1.0-preview.1
+tar -xzf workhub-v0.1.0-preview.2-source.tar.gz
+docker load -i workhub-v0.1.0-preview.2-linux-amd64.docker.tar.gz
+cd workhub-v0.1.0-preview.2
+python3 scripts/init-env.py --image workhub:v0.1.0-preview.2
 docker compose --profile app up --no-build -d --wait --wait-timeout 300
 ```
 
@@ -30,7 +32,7 @@ docker compose --profile app up --no-build -d --wait --wait-timeout 300
 应用镜像对应的平台可通过以下命令查看：
 
 ```bash
-docker image inspect workhub:v0.1.0-preview.1 --format '{{.Os}}/{{.Architecture}} {{.Id}}'
+docker image inspect workhub:v0.1.0-preview.2 --format '{{.Os}}/{{.Architecture}} {{.Id}}'
 ```
 
 应用镜像的版本和源码 commit 也写入 OCI 标签，可与 `release-manifest.json` 核对。当前附件提供 Linux x86-64 镜像；其他架构使用[源码构建路径](GETTING_STARTED.md#从源码构建)准备自己的镜像。

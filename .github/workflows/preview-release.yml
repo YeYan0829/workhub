@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Preview version (v0.1.0-preview.1)
+        description: Preview version (v0.1.0-preview.2)
         required: true
-        default: v0.1.0-preview.1
+        default: v0.1.0-preview.2
 
 concurrency:
   group: workhub-preview-package
